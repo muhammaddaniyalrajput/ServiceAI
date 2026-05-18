@@ -51,9 +51,14 @@ async def find_providers(payload: FindProvidersRequest) -> FindProvidersResponse
     ```
     """
     try:
-        return orchestrate_find_providers(
+        from app.api.v1.bookings import cache_ranked
+        
+        response = orchestrate_find_providers(
             booking_id=payload.booking_id,
             intent=payload.intent,
         )
+        # Save ranked providers to in-memory cache so Step 3 can find them
+        cache_ranked(payload.booking_id, response.ranked)
+        return response
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
