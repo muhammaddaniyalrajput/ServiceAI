@@ -4,7 +4,7 @@ Every API surface should use these types — never raw dicts.
 """
 from __future__ import annotations
 from pydantic import BaseModel, Field
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Dict
 from enum import Enum
 
 
@@ -102,6 +102,19 @@ class AgentLog(BaseModel):
 
 
 # ──────────────────────────────────────────────
+# Agent Trace Step (clean shape for the showcase)
+# ──────────────────────────────────────────────
+
+class AgentTraceStep(BaseModel):
+    agent:     str
+    action:    str
+    reasoning: str = ""
+    output:    dict = Field(default_factory=dict)
+    status:    str = ""
+    timestamp: str = ""
+
+
+# ──────────────────────────────────────────────
 # API Request / Response Wrappers
 # ──────────────────────────────────────────────
 
@@ -130,9 +143,13 @@ class FindProvidersResponse(BaseModel):
 
 
 class BookServiceRequest(BaseModel):
-    booking_id:  str
-    provider_id: str
-    intent:      IntentOutput
+    booking_id:   str
+    provider_id:  str
+    intent:       IntentOutput
+    device_token: Optional[str] = Field(
+        None,
+        description="Optional FCM device token. If provided, a real push notification is sent.",
+    )
 
 
 class BookServiceResponse(BaseModel):
@@ -154,3 +171,30 @@ class AgentLogsResponse(BaseModel):
     success:    bool = True
     booking_id: str
     logs:       List[AgentLog]
+
+
+# ──────────────────────────────────────────────
+# Agent Trace (dedicated collection response)
+# ──────────────────────────────────────────────
+
+class AgentTraceResponse(BaseModel):
+    success:    bool = True
+    booking_id: str
+    steps:      List[AgentTraceStep]
+
+
+# ──────────────────────────────────────────────
+# Providers List (GET /providers)
+# ──────────────────────────────────────────────
+
+class ServiceCategory(BaseModel):
+    """A group of providers under one service type."""
+    service:   str
+    count:     int
+    providers: List[Provider]
+
+
+class ProvidersListResponse(BaseModel):
+    success:    bool = True
+    total:      int
+    categories: List[ServiceCategory]

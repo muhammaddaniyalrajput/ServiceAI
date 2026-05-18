@@ -9,15 +9,17 @@ from app.models.schemas import (
     BookServiceResponse,
     BookingStatusResponse,
     AgentLogsResponse,
+    AgentTraceResponse,
+    AgentTraceStep,
     BookingStatus,
+    RankedProvider,
 )
 from app.orchestrator.workflow import orchestrate_book_service
 from app.services import firebase_db as db
 
 router = APIRouter()
 
-# Temporary in-process cache of ranked results for a booking session.
-# In production this lives in Redis or Firestore.
+# ── In-process cache (fast path — also backed by Firestore now) ──────────────
 _ranked_cache: dict = {}
 
 
@@ -26,7 +28,21 @@ def cache_ranked(booking_id: str, ranked: list):
 
 
 def get_cached_ranked(booking_id: str) -> list:
-    return _ranked_cache.get(booking_id, [])
+    """
+    Try in-memory first. If missing (server restarted between Stage 2→3),
+    fall back to the Firestore-persisted ranked_snapshot.
+    """
+    if booking_id in _ranked_cache:
+        return _ranked_cache[booking_id]
+
+    # Restore from Firestore
+    raw_list = db.load_ranked_providers(booking_id)
+    if raw_list:
+        restored = [RankedProvider(**item) for item in raw_list]
+        _ranked_cache[booking_id] = restored   # re-populate local cache
+        return restored
+
+    return []
 
 
 @router.post("/book-service", response_model=BookServiceResponse, summary="Confirm a service booking")
@@ -42,7 +58,8 @@ async def book_service(payload: BookServiceRequest) -> BookServiceResponse:
     {
       "booking_id": "f47ac10b-...",
       "provider_id": "prov_001",
-      "intent": { "service_type": "AC Technician", "location": "G-13, Islamabad", ... }
+      "intent": { "service_type": "AC Technician", "location": "G-13, Islamabad", ... },
+      "device_token": "optional_fcm_token"
     }
     ```
 
@@ -71,6 +88,7 @@ async def book_service(payload: BookServiceRequest) -> BookServiceResponse:
             provider_id=payload.provider_id,
             intent=payload.intent,
             ranked_providers=ranked,
+            device_token=payload.device_token,
         )
         return result
     except ValueError as exc:
@@ -101,11 +119,20 @@ async def get_booking_status(booking_id: str) -> BookingStatusResponse:
     )
 
 
-@router.get("/agent-logs/{booking_id}", response_model=AgentLogsResponse, summary="Get agent reasoning logs")
-async def get_agent_logs(booking_id: str) -> AgentLogsResponse:
+@router.get("/agent-logs/{booking_id}", response_model=AgentTraceResponse, summary="Get agent reasoning logs")
+async def get_agent_logs(booking_id: str) -> AgentTraceResponse:
     """
-    Returns the full agent reasoning log trace for a booking.
-    Useful for the frontend 'Live Workflow' view.
+    Returns the full agent reasoning trace for a booking.
+
+    Reads from the dedicated `agent_logs/{booking_id}` Firestore collection.
+    Each step contains: agent name, action, reasoning, output, status, timestamp.
+
+    Useful for the frontend **'Live Workflow'** timeline view.
     """
-    logs = db.get_agent_logs(booking_id)
-    return AgentLogsResponse(booking_id=booking_id, logs=logs)
+    trace = db.get_agent_trace(booking_id)
+    steps = [AgentTraceStep(**s) for s in trace.get("steps", [])]
+
+    return AgentTraceResponse(
+        booking_id=booking_id,
+        steps=steps,
+    )

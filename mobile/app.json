@@ -14,7 +14,8 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.serviceflowai.mobile"
+      "bundleIdentifier": "com.serviceflowai.mobile",
+      "googleServicesFile": "./GoogleService-Info.plist"
     },
     "android": {
       "adaptiveIcon": {
@@ -22,6 +23,7 @@
         "backgroundColor": "#0f172a"
       },
       "package": "com.serviceflowai.mobile",
+      "googleServicesFile": "./google-services.json",
       "edgeToEdgeEnabled": true
     },
     "web": {
@@ -29,7 +31,9 @@
       "bundler": "metro"
     },
     "plugins": [
-      "expo-location"
+      "expo-location",
+      "expo-device",
+      "expo-notifications"
     ]
   }
 }

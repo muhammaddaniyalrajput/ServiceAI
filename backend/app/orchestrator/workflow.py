@@ -19,12 +19,15 @@ DAG:
   [4] Booking Agent         → simulate booking, generate confirmation
       │
       ├──▼
-      │  [5] Notification Agent  → build localized FCM payload
+      │  [5] Notification Agent  → build localized FCM payload + send
       │
       └──▼
          [6] Follow-Up Agent     → schedule survey + loyalty reward
 
-All agents emit structured logs, persisted to Firestore in real time.
+All agents emit structured logs persisted to:
+  - bookings/{id}               (status + snapshot)
+  - bookings/{id}/logs          (legacy subcollection)
+  - agent_logs/{id}             (top-level trace document — showcase feature)
 """
 import uuid
 from app.agents.intent_agent       import run_intent_agent
@@ -39,6 +42,8 @@ from app.models.schemas            import (
     FindProvidersResponse,
     BookServiceResponse,
     IntentOutput,
+    RankedProvider,
+    Provider,
 )
 
 
@@ -55,6 +60,7 @@ def orchestrate_analyze(user_id: str, text: str) -> AnalyzeResponse:
 
     db.update_booking(booking_id, {"status": "searching", "extracted_intent": intent.model_dump()})
     db.save_agent_logs(booking_id, logs)
+    db.save_agent_trace(booking_id, logs)   # ← dedicated agent_logs collection
 
     return AnalyzeResponse(
         booking_id=booking_id,
@@ -68,6 +74,7 @@ def orchestrate_analyze(user_id: str, text: str) -> AnalyzeResponse:
 def orchestrate_find_providers(booking_id: str, intent: IntentOutput) -> FindProvidersResponse:
     """
     Node 2 + 3: Run Discovery Agent then Ranking Agent.
+    Persists the ranked list to Firestore so Stage 3 survives a server restart.
     """
     # Discovery
     providers, disc_logs = run_discovery_agent(booking_id, intent)
@@ -76,12 +83,15 @@ def orchestrate_find_providers(booking_id: str, intent: IntentOutput) -> FindPro
     ranked, rank_logs = run_ranking_agent(booking_id, providers, intent)
 
     all_logs = disc_logs + rank_logs
+
     db.update_booking(booking_id, {
-        "status": "ranking",
-        "providers_count": len(providers),
-        "top_provider": ranked[0].provider.provider_id if ranked else None,
+        "status":           "ranking",
+        "providers_count":  len(providers),
+        "top_provider":     ranked[0].provider.provider_id if ranked else None,
     })
     db.save_agent_logs(booking_id, all_logs)
+    db.save_agent_trace(booking_id, all_logs)    # ← dedicated agent_logs collection
+    db.save_ranked_providers(booking_id, ranked)  # ← persist for Stage 3
 
     return FindProvidersResponse(
         providers=providers,
@@ -97,9 +107,13 @@ def orchestrate_book_service(
     provider_id: str,
     intent: IntentOutput,
     ranked_providers: list,
+    device_token: str | None = None,
 ) -> BookServiceResponse:
     """
     Node 4 + 5 + 6: Booking → Notification → Follow-Up.
+
+    ranked_providers: list[RankedProvider] — comes from the API layer which
+    tries the in-memory cache first, then falls back to Firestore.
     """
     # Resolve selected provider from the ranked list
     selected_provider = next(
@@ -113,18 +127,22 @@ def orchestrate_book_service(
     # Booking
     booking, book_logs = run_booking_agent(booking_id, selected_provider, intent)
 
-    # Notification
-    notification, notif_logs = run_notification_agent(booking_id, booking, intent)
+    # Notification (+ real FCM send)
+    notification, notif_logs = run_notification_agent(
+        booking_id, booking, intent, device_token=device_token
+    )
 
     # Follow-Up
     follow_up, fu_logs = run_followup_agent(booking_id, booking, intent)
 
     all_logs = book_logs + notif_logs + fu_logs
+
     db.update_booking(booking_id, {
-        "status": "confirmed",
+        "status":  "confirmed",
         "booking": booking.model_dump(exclude={"provider"}),
     })
     db.save_agent_logs(booking_id, all_logs)
+    db.save_agent_trace(booking_id, all_logs)   # ← dedicated agent_logs collection
 
     return BookServiceResponse(
         booking=booking,

@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     GOOGLE_MAPS_API_KEY: str = ""
     USE_MOCK_MAPS: bool = True
 
-    FIREBASE_CREDENTIALS_JSON_PATH: str = "./firebase-admin.json"
+    FIREBASE_CREDENTIALS_JSON_PATH: str = "./app/firebase-admin.json"
 
     CORS_ORIGINS: str = "http://localhost:8081,http://localhost:3000"
 

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import apiClient from '../api';
 import {
   View,
   Text,
@@ -18,11 +19,23 @@ export default function HomeScreen() {
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!inputText.trim()) return;
     setIsLoading(true);
-    // TODO: call /api/v1/analyze-request
-    setTimeout(() => setIsLoading(false), 2000);
+    try {
+      // The apiClient will automatically attach the Firebase ID token
+      // in the Authorization: Bearer header.
+      const response = await apiClient.post('/analyze', {
+        request_text: inputText,
+        user_id: 'anonymous', // will be replaced by backend using token
+      });
+      console.log('Analysis result:', response.data);
+    } catch (error) {
+      console.error('API Error:', error);
+    } finally {
+      setIsLoading(false);
+      setInputText('');
+    }
   };
 
   return (
