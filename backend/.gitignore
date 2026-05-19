@@ -1,4 +1,7 @@
 .env
 .venv
 app/firebase-admin.json
-__pycache__
+__pycache__/
+*.pyc
+.env.example
+node_modules/

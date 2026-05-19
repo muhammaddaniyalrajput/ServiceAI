@@ -1,0 +1,11 @@
+.env.example
+.venv
+# Python cache
+__pycache__/
+*.pyc
+
+# Environment variables
+.env
+
+# Node modules (if needed)
+node_modules/
