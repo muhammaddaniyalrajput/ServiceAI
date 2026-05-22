@@ -7,4 +7,5 @@ firebase-admin==6.6.0
 googlemaps==4.10.0
 python-dotenv==1.0.1
 tenacity>=8.2.3
+google-antigravity
 python-multipart==0.0.20

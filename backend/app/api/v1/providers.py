@@ -2,6 +2,7 @@
 POST /api/v1/find-providers   — Discovers and ranks nearby service providers.
 GET  /api/v1/providers        — Lists all available providers, grouped by service category.
 """
+import asyncio
 from fastapi import APIRouter, HTTPException
 from app.models.schemas import (
     FindProvidersRequest,
@@ -20,45 +21,12 @@ router = APIRouter()
 async def find_providers(payload: FindProvidersRequest) -> FindProvidersResponse:
     """
     **Stage 2 of the booking pipeline.**
-
     Takes the `booking_id` and `intent` from Stage 1.
-    Runs the **Provider Discovery Agent** and **Ranking Agent**.
-
-    Returns a list of `providers` (unranked) and `ranked` (best→worst).
-
-    ---
-    **Sample Request:**
-    ```json
-    {
-      "booking_id": "f47ac10b-...",
-      "intent": {
-        "service_type": "AC Technician",
-        "location": "G-13, Islamabad",
-        "urgency": "medium",
-        "language": "roman_ur",
-        "confidence": 0.97
-      }
-    }
-    ```
-
-    **Sample Response (truncated):**
-    ```json
-    {
-      "success": true,
-      "providers": [...],
-      "ranked": [
-        {
-          "provider": { "name": "Ali AC Repair & Services", "rating": 4.9, ... },
-          "score": 82.5,
-          "score_reason": "Score 82.5/100 — Selected because of outstanding rating of 4.9, very close at 1.0km, platform-verified."
-        }
-      ],
-      "logs": [...]
-    }
-    ```
+    Runs the Provider Discovery Agent and Ranking Agent.
     """
     try:
-        result = orchestrate_find_providers(
+        result = await asyncio.to_thread(
+            orchestrate_find_providers,
             booking_id=payload.booking_id,
             intent=payload.intent,
         )
@@ -76,13 +44,8 @@ async def find_providers(payload: FindProvidersRequest) -> FindProvidersResponse
 async def list_providers() -> ProvidersListResponse:
     """
     Returns all available service providers, grouped by service category.
-
-    Reads from Firestore `providers` collection if available.
-    Falls back to the hardcoded mock dataset during development.
-
-    Useful for the frontend provider browse / discovery UI.
     """
-    raw_providers = db.get_all_providers()
+    raw_providers = await asyncio.to_thread(db.get_all_providers)
 
     # Group by service category
     categories_map: dict[str, list] = {}

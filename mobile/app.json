@@ -32,7 +32,6 @@
     },
     "plugins": [
       "expo-location",
-      "expo-device",
       "expo-notifications"
     ]
   }

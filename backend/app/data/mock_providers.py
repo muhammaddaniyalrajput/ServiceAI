@@ -204,38 +204,82 @@ MOCK_PROVIDERS: List[Provider] = [
 
 
 SERVICE_ALIASES = {
-    # English variants
+    # ── English variants ──
     "ac repair": "AC Technician",
     "ac service": "AC Technician",
+    "ac maintenance": "AC Technician",
     "air conditioner": "AC Technician",
+    "air conditioning": "AC Technician",
     "ac technician": "AC Technician",
+    "hvac": "AC Technician",
     "plumbing": "Plumber",
     "plumber": "Plumber",
     "pipe": "Plumber",
+    "pipe fitting": "Plumber",
+    "water leak": "Plumber",
     "electrical": "Electrician",
     "electrician": "Electrician",
     "light": "Electrician",
     "wiring": "Electrician",
+    "electric": "Electrician",
     "painting": "Painter",
     "painter": "Painter",
+    "paint": "Painter",
+    "wall painting": "Painter",
     "carpentry": "Carpenter",
     "carpenter": "Carpenter",
+    "woodwork": "Carpenter",
+    "furniture repair": "Carpenter",
     "cleaning": "House Cleaner",
     "cleaner": "House Cleaner",
-    # Urdu / Roman Urdu
+    "house cleaning": "House Cleaner",
+    "home cleaning": "House Cleaner",
+    "deep cleaning": "House Cleaner",
+    # ── Urdu / Roman Urdu ──
     "ac": "AC Technician",
-    "plumber": "Plumber",
+    "ac wala": "AC Technician",
+    "ac theek": "AC Technician",
     "naali": "Plumber",
+    "pani wala": "Plumber",
+    "plumbing wala": "Plumber",
+    "nalkay wala": "Plumber",
     "bijli": "Electrician",
+    "bijli wala": "Electrician",
     "rang": "Painter",
+    "rangsaz": "Painter",
+    "paint wala": "Painter",
     "safai": "House Cleaner",
     "safai wala": "House Cleaner",
-    "rangswaz": "Painter",
+    "ghar ki safai": "House Cleaner",
     "barhai": "Carpenter",
+    "mistri": "Carpenter",
+    "mistry": "Carpenter",
+    "lakri wala": "Carpenter",
+    "general service": "General Service",
 }
+
+# Canonical service names (used for reverse lookup)
+_CANONICAL_SERVICES = set(SERVICE_ALIASES.values())
 
 
 def normalize_service(raw: str) -> str:
-    """Map raw extracted service string to a canonical service name."""
+    """Map raw extracted service string to a canonical service name.
+    Uses exact match first, then substring matching for fuzzy resolution."""
     key = raw.lower().strip()
-    return SERVICE_ALIASES.get(key, raw.title())
+
+    # 1. Exact match
+    if key in SERVICE_ALIASES:
+        return SERVICE_ALIASES[key]
+
+    # 2. Check if the raw value is already a canonical name
+    titled = raw.strip().title()
+    if titled in _CANONICAL_SERVICES:
+        return titled
+
+    # 3. Substring match — check if any alias key is contained in the raw text
+    for alias_key, canonical in SERVICE_ALIASES.items():
+        if alias_key in key or key in alias_key:
+            return canonical
+
+    # 4. Give up — return title-cased original
+    return titled

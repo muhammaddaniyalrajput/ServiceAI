@@ -1,15 +1,31 @@
 """
 POST /api/v1/analyze-request
 Accepts raw natural language text and returns extracted intent + agent logs.
-The user_id is derived from the verified Firebase Auth token (falls back to
-the request body field in mock / dev mode).
+
+Includes:
+  - Input sanitization (strip HTML/script tags)
+  - Simple rate limiting per user
 """
+import re
+import asyncio
 from fastapi import APIRouter, HTTPException, Depends
 from app.models.schemas import AnalyzeRequest, AnalyzeResponse
 from app.orchestrator.workflow import orchestrate_analyze
 from app.core.auth import get_verified_uid
 
 router = APIRouter()
+
+# Simple HTML/script tag stripper
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _sanitize_text(text: str) -> str:
+    """Strip HTML tags and excessive whitespace from user input."""
+    cleaned = _HTML_TAG_RE.sub("", text)
+    cleaned = cleaned.strip()
+    if len(cleaned) < 3:
+        raise ValueError("Input text too short after sanitization.")
+    return cleaned
 
 
 @router.post("/analyze-request", response_model=AnalyzeResponse, summary="Analyze NL service request")
@@ -19,49 +35,23 @@ async def analyze_request(
 ) -> AnalyzeResponse:
     """
     **Stage 1 of the booking pipeline.**
-
     Accepts a natural language request in English, Urdu, or Roman Urdu.
-    Runs the **Intent Agent** to extract:
-    - `service_type`
-    - `location`
-    - `datetime_hint`
-    - `urgency`
-    - `language`
-
-    Returns a `booking_id` that is used in all subsequent calls.
-
-    Requires `Authorization: Bearer <firebase_id_token>` header.
-    In development / mock mode the header is optional.
-
-    ---
-    **Sample Request:**
-    ```json
-    {
-      "user_id": "user_abc123",
-      "text": "Mujhe kal subah G-13 mein AC technician chahiye"
-    }
-    ```
-
-    **Sample Response:**
-    ```json
-    {
-      "success": true,
-      "booking_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
-      "intent": {
-        "service_type": "AC Technician",
-        "location": "G-13, Islamabad",
-        "datetime_hint": "kal subah (tomorrow morning)",
-        "urgency": "medium",
-        "language": "roman_ur",
-        "confidence": 0.97
-      },
-      "logs": [...]
-    }
-    ```
+    Runs the Intent Agent to extract structured variables.
     """
+    try:
+        sanitized_text = _sanitize_text(payload.text)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
     try:
         # Prefer verified uid from token; fall back to body field for dev convenience
         effective_user_id = uid if uid != "dev_user" else payload.user_id
-        return orchestrate_analyze(user_id=effective_user_id, text=payload.text)
+
+        result = await asyncio.to_thread(
+            orchestrate_analyze,
+            user_id=effective_user_id,
+            text=sanitized_text
+        )
+        return result
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))

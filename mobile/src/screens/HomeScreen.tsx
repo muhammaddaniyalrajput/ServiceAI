@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import apiClient from '../api';
+
 import {
   View, Text, TextInput, TouchableOpacity,
   ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform,
@@ -22,14 +22,9 @@ export default function HomeScreen() {
     setIntentResult(null);
 
     try {
-      // The apiClient will automatically attach the Firebase ID token
-      // in the Authorization: Bearer header.
-      const response = await apiClient.post('/analyze', {
-        request_text: inputText,
-        user_id: 'anonymous', // will be replaced by backend using token
-      });
-      console.log('Analysis result:', response.data);
-      setIntentResult(response.data);
+      const data = await analyzeRequest('anonymous', inputText);
+      console.log('Analysis result:', data);
+      setIntentResult(data);
     } catch (error: any) {
       console.error('API Error:', error);
       setErrorMessage(error.message || 'Failed to process request. Please try again.');

@@ -38,4 +38,19 @@ def log_agent(
         "data": data or {},
     }
     logger.info(json.dumps(entry, ensure_ascii=False, default=str))
+    
+    # Bridge to Google Antigravity Trace Telemetry
+    try:
+        from app.orchestrator.google_labs_antigravity import emit_trace_event
+        emit_trace_event(
+            booking_id=booking_id,
+            agent=agent,
+            action=action,
+            status=status,
+            reasoning=reasoning,
+            data=data
+        )
+    except Exception as exc:
+        logger.warning(f"Failed to bridge Antigravity trace: {exc}")
+
     return entry

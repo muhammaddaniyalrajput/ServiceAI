@@ -8,6 +8,7 @@ import random
 from datetime import datetime, timezone, timedelta
 from app.core.logger import log_agent
 from app.models.schemas import IntentOutput, Provider, BookingResult, BookingStatus
+from app.services import firebase_db as db
 
 ETA_RANGES = {
     "high":   (15, 35),
@@ -59,6 +60,20 @@ def run_booking_agent(
         status="processing",
         reasoning=f"Creating booking with provider '{provider.name}' for '{intent.service_type}'.",
     ))
+
+    # Idempotency check
+    existing = db.get_booking(booking_id)
+    if existing and existing.get("status") == "confirmed" and "booking" in existing:
+        logs.append(log_agent(
+            booking_id=booking_id,
+            agent="Booking Agent",
+            action="Booking restored",
+            status="success",
+            reasoning="Booking already confirmed. Returning existing record.",
+        ))
+        booking_data = existing["booking"]
+        booking = BookingResult(**booking_data)
+        return booking, logs
 
     urgency_str = intent.urgency.value if hasattr(intent.urgency, "value") else str(intent.urgency)
     eta_min, eta_max = ETA_RANGES.get(urgency_str, (30, 90))

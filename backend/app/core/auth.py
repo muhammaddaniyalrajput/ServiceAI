@@ -34,8 +34,9 @@ def get_verified_uid(authorization: Optional[str] = Header(None)) -> str:
     Returns the verified Firebase UID (str).
     In mock/dev mode returns 'dev_user' or the raw header value.
     """
-    # ── Mock / dev mode (Firebase not initialised) ────────────────────────────
-    if not firebase_admin._apps:
+    # ── Mock / dev mode (Firebase not initialised or Firestore disabled) ──
+    from app.services.firebase_db import _get_db
+    if _get_db() is None:
         if authorization:
             # Treat whatever was passed as the uid — useful for manual testing
             token = authorization.removeprefix("Bearer ").strip()

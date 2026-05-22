@@ -1,4 +1,3 @@
-.env.example
 .venv
 # Python cache
 __pycache__/
@@ -6,6 +5,9 @@ __pycache__/
 
 # Environment variables
 .env
+backend/.env
+mobile/.env
 
-# Node modules (if needed)
+# Node modules
 node_modules/
+mobile/node_modules/

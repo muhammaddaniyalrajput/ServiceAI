@@ -26,19 +26,33 @@ def _get_db():
     global _db
     if _db is not None:
         return _db
+    
+    # Try initializing and verifying the connection
     if firebase_admin._apps:
-        _db = firestore.client()
-        return _db
+        try:
+            client = firestore.client()
+            # Perform a lightweight document get to verify API authorization/status
+            client.collection("test_connection").document("test").get()
+            _db = client
+            return _db
+        except Exception as e:
+            logger.warning("Firebase app exists but Firestore is unreachable or disabled: %s. Using mock mode.", e)
+            _db = None
+            return None
 
     cred_path = settings.FIREBASE_CREDENTIALS_JSON_PATH
     if os.path.exists(cred_path):
         try:
             cred = credentials.Certificate(cred_path)
             firebase_admin.initialize_app(cred)
-            _db = firestore.client()
+            client = firestore.client()
+            # Perform a lightweight document get to verify API authorization/status
+            client.collection("test_connection").document("test").get()
+            _db = client
             logger.info("✅ Firebase initialized successfully (project: %s).", cred.project_id)
         except Exception as exc:
-            logger.warning("Firebase init failed: %s — running in mock mode.", exc)
+            logger.warning("Firebase initialization or API verification failed: %s — running in mock mode.", exc)
+            _db = None
     else:
         logger.warning(
             "Firebase credentials not found at '%s' — running in mock mode.", cred_path

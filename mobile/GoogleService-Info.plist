@@ -3,21 +3,21 @@
 <plist version="1.0">
 <dict>
 	<key>CLIENT_ID</key>
-	<string>1021164008949-PLACEHOLDER.apps.googleusercontent.com</string>
+	<string>1082565883517-f39bdfu520.apps.googleusercontent.com</string>
 	<key>REVERSED_CLIENT_ID</key>
-	<string>com.googleusercontent.apps.1021164008949-PLACEHOLDER</string>
+	<string>com.googleusercontent.apps.1082565883517-f39bdfu520</string>
 	<key>API_KEY</key>
-	<string>AIzaSy_PLACEHOLDER_KEY</string>
+	<string>AIzaSyCyCiFUr8JEyGoSjN3uwtiR61NLa6QrixA</string>
 	<key>GCM_SENDER_ID</key>
-	<string>1021164008949</string>
+	<string>1082565883517</string>
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
 	<string>com.serviceflowai.mobile</string>
 	<key>PROJECT_ID</key>
-	<string>serviceflowai-4181f</string>
+	<string>serviceflowai-final</string>
 	<key>STORAGE_BUCKET</key>
-	<string>serviceflowai-4181f.appspot.com</string>
+	<string>serviceflowai-final.firebasestorage.app</string>
 	<key>IS_ADS_ENABLED</key>
 	<false></false>
 	<key>IS_ANALYTICS_ENABLED</key>
@@ -29,6 +29,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:1021164008949:ios:PLACEHOLDER</string>
+	<string>1:1082565883517:ios:6933390ebf41a248236314</string>
 </dict>
 </plist>
