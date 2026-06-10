@@ -1,5 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { initializeAuth, getAuth, Persistence } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // getReactNativePersistence exists at runtime in Firebase v11 but its type declarations
@@ -17,15 +18,16 @@ const { getReactNativePersistence } = require('firebase/auth') as {
 // ✅ CORRECT (web SDK app ID):
 //    appId: "1:1082565883517:web:c629be029372aa76236314"
 const firebaseConfig = {
-  apiKey:            process.env.EXPO_PUBLIC_FIREBASE_API_KEY             ?? 'AIzaSyCyCiFUr8JEyGoSjN3uwtiR61NLa6QrixA',
-  authDomain:        process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN          ?? 'serviceflowai-final.firebaseapp.com',
-  projectId:         process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID           ?? 'serviceflowai-final',
-  storageBucket:     process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET       ?? 'serviceflowai-final.firebasestorage.app',
-  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID  ?? '1082565883517',
-  appId:             process.env.EXPO_PUBLIC_FIREBASE_APP_ID               ?? '1:1082565883517:web:c629be029372aa76236314',
+  apiKey:            process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+  authDomain:        process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId:         process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket:     process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId:             process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
 };
 
 let auth: any;
+let db: any;
 
 try {
   // Prevent duplicate app initialization on hot-reload
@@ -48,6 +50,9 @@ try {
       auth = getAuth(app);
     }
   }
+
+  // Firestore is idempotent — getFirestore() is safe to call multiple times
+  db = getFirestore(app);
 } catch (error) {
   console.warn(
     'Firebase Initialization Warning: Firebase failed to initialize. ' +
@@ -55,11 +60,12 @@ try {
     'Get correct values from: Firebase Console > Project Settings > General > Your apps (Web app).',
     error
   );
-  // Export a mock auth object so the app does not crash on imports
+  // Export mock objects so the app does not crash on imports
   auth = {
     currentUser: null,
     getIdToken: async () => '',
   };
+  db = null;
 }
 
-export { auth };
+export { auth, db };

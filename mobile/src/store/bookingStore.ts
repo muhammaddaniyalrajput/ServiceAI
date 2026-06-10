@@ -106,7 +106,7 @@ export const useBookingStore = create<BookingState>()(
       set((state) => {
         // Prevent duplicate log steps based on timestamp, agent, and action
         const existingKeys = new Set(
-          state.agentLogs.map((l) => `${l.agent}-${l.action}-${l.timestamp}`)
+          state.agentLogs.map((l: AgentTraceStep) => `${l.agent}-${l.action}-${l.timestamp}`)
         );
         logs.forEach((log) => {
           const key = `${log.agent}-${log.action}-${log.timestamp}`;

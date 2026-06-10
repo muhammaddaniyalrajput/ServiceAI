@@ -1,18 +1,14 @@
 """
 Provider Discovery Agent — Agent #2
-Filters providers from Firestore (or mock data) based on extracted intent.
-Attaches distance estimates for each provider.
-
-Improvements:
-  - Uses firebase_db.get_all_providers() with mock fallback
-  - Expanded location coordinates (30+ Islamabad sectors)
-  - Fuzzy service matching via normalize_service()
+Fetches real-time service providers from Google Places API based on
+extracted intent (service type + location). Falls back to MOCK_PROVIDERS
+if Google is unavailable or returns no results.
 """
 import math
 from typing import List
 from app.core.logger import log_agent
 from app.models.schemas import IntentOutput, Provider
-from app.data.mock_providers import MOCK_PROVIDERS, normalize_service
+from app.data.providers import MOCK_PROVIDERS, normalize_service, get_providers_from_google
 
 # ── Approximate coordinates for known Islamabad/Rawalpindi areas ──────────────
 LOCATION_COORDS = {
@@ -96,70 +92,99 @@ def _haversine_km(lat1, lon1, lat2, lon2) -> float:
     return round(R * 2 * math.asin(math.sqrt(a)), 2)
 
 
-def _load_all_providers() -> List[Provider]:
-    """Load providers from Firestore if available, else use mock data."""
-    try:
-        from app.services.firebase_db import get_all_providers
-        raw = get_all_providers()
-        if raw:
-            return [Provider(**p) if isinstance(p, dict) else p for p in raw]
-    except Exception:
-        pass
-    return list(MOCK_PROVIDERS)
-
-
 def run_discovery_agent(booking_id: str, intent: IntentOutput) -> tuple[List[Provider], list]:
     """
-    Returns (list[Provider], list[AgentLog])
+    Returns (list[Provider], list[AgentLog]).
+    Primary source: Google Places API.
+    Fallback: MOCK_PROVIDERS static list.
     """
     logs = []
+    from app.services.google_maps import get_distance_km
+
+    canonical_service = normalize_service(intent.service_type)
+    location_text = intent.location if intent.location.lower() not in ("unknown", "not specified", "") else "Islamabad"
+    user_lat, user_lon = _parse_coords(intent.location)
+
+    # ── Override with exact coordinates if saved in the booking document ──
+    from app.services import firebase_db as db
+    booking = db.get_booking(booking_id)
+    if booking:
+        user_coords = booking.get("user_coordinates")
+        if isinstance(user_coords, dict):
+            lat = user_coords.get("latitude")
+            lon = user_coords.get("longitude")
+            if lat is not None and lon is not None:
+                user_lat, user_lon = lat, lon
+                logs.append(log_agent(
+                    booking_id=booking_id,
+                    agent="Provider Discovery Agent",
+                    action="Resolved exact GPS coordinates",
+                    status="processing",
+                    reasoning=f"Using saved coordinates ({user_lat:.6f}, {user_lon:.6f}) from user's profile for distance calculations.",
+                ))
 
     logs.append(log_agent(
         booking_id=booking_id,
         agent="Provider Discovery Agent",
-        action="Searching provider database",
+        action="Querying Google Places API",
         status="processing",
-        reasoning=f"Looking for '{intent.service_type}' providers near '{intent.location}'.",
+        reasoning=f"Searching Google Places for '{canonical_service}' near '{location_text}'.",
     ))
 
-    canonical_service = normalize_service(intent.service_type)
-    user_lat, user_lon = _parse_coords(intent.location)
+    # ── Primary: Google Places ─────────────────────────────────────────────────
+    raw_dicts = get_providers_from_google(canonical_service, location_text)
+    source = "Google Places API"
 
-    from app.services.google_maps import get_distance_km
-
-    all_providers = _load_all_providers()
-
-    matched: List[Provider] = []
-    for p in all_providers:
-        provider_service = normalize_service(p.service)
-        if provider_service.lower() == canonical_service.lower():
-            distance = get_distance_km(user_lat, user_lon, p.latitude, p.longitude)
-            provider_copy = p.model_copy(update={"distance_km": distance})
-            matched.append(provider_copy)
-
-    if not matched:
-        # Fallback: return all providers of any service in the same area, sorted by distance
+    # ── Fallback: MOCK_PROVIDERS ───────────────────────────────────────────────
+    if not raw_dicts:
         logs.append(log_agent(
             booking_id=booking_id,
             agent="Provider Discovery Agent",
-            action="No exact match — widening search",
+            action="Google returned no results — using mock fallback",
             status="processing",
-            reasoning=f"No providers found for '{canonical_service}'. Returning nearest alternatives.",
+            reasoning="Google Places returned 0 results. Falling back to static mock providers.",
         ))
-        all_with_distance = [
+        raw_dicts = [p.model_dump() for p in MOCK_PROVIDERS
+                     if normalize_service(p.service).lower() == canonical_service.lower()]
+        source = "mock fallback"
+
+    # ── Convert raw dicts → Provider objects + attach distances ───────────────
+    matched: List[Provider] = []
+    for raw in raw_dicts:
+        try:
+            p = Provider(**raw) if isinstance(raw, dict) else raw
+            distance = get_distance_km(user_lat, user_lon, p.latitude, p.longitude)
+            if distance <= 15.0:
+                matched.append(p.model_copy(update={"distance_km": distance}))
+        except Exception as e:
+            # Skip malformed entries without crashing the pipeline
+            import logging
+            logging.getLogger("serviceflow").warning("Skipping malformed provider entry: %s", e)
+
+    if not matched:
+        # Last resort: return closest mock providers of any service
+        logs.append(log_agent(
+            booking_id=booking_id,
+            agent="Provider Discovery Agent",
+            action="No match found — widening to nearest providers",
+            status="processing",
+            reasoning=f"No providers found within 15km for '{canonical_service}'. Returning nearest alternatives.",
+        ))
+        all_with_dist = [
             p.model_copy(update={"distance_km": get_distance_km(user_lat, user_lon, p.latitude, p.longitude)})
-            for p in all_providers
+            for p in MOCK_PROVIDERS
         ]
-        all_with_distance.sort(key=lambda p: p.distance_km or 999)
-        matched = all_with_distance[:5]
+        all_with_dist.sort(key=lambda p: p.distance_km or 999)
+        matched = all_with_dist[:5]
+        source = "mock fallback (widened)"
 
     logs.append(log_agent(
         booking_id=booking_id,
         agent="Provider Discovery Agent",
         action="Discovery complete",
         status="success",
-        reasoning=f"Found {len(matched)} provider(s) matching '{canonical_service}' near '{intent.location}'.",
-        data={"count": len(matched), "service": canonical_service},
+        reasoning=f"Found {len(matched)} provider(s) for '{canonical_service}' near '{location_text}' via {source}.",
+        data={"count": len(matched), "service": canonical_service, "source": source},
     ))
 
     return matched, logs

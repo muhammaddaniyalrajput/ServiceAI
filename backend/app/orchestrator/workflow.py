@@ -148,7 +148,7 @@ def get_pipeline_dag() -> AntigravityDAG:
 
 # ── Step 1 ────────────────────────────────────────────────────────────────────
 
-def orchestrate_analyze(user_id: str, text: str) -> AnalyzeResponse:
+def orchestrate_analyze(user_id: str, text: str, coordinates: dict = None) -> AnalyzeResponse:
     """
     Stage 1: Intent Extraction segment.
     """
@@ -161,7 +161,48 @@ def orchestrate_analyze(user_id: str, text: str) -> AnalyzeResponse:
     results = dag.run_segment(["intent_extraction"], context)
     intent, logs = results["intent_extraction"]
 
-    db.update_booking(booking_id, {"status": "searching", "extracted_intent": intent.model_dump()})
+    # ── Fall back to user's saved location if not specified in text ──
+    user_coords = coordinates
+    if user_id and user_id not in ("anonymous", "dev_user"):
+        profile = db.get_user_profile(user_id)
+        if profile:
+            # Check if intent location was not explicitly defined in the request text
+            if intent.location.lower() in ("not specified", "unknown", ""):
+                saved_loc = profile.get("address") or f"{profile.get('city')}, {profile.get('province')}"
+                if saved_loc:
+                    intent.location = saved_loc
+                    
+                    # Log the auto-population logic in the agent trace logs
+                    from app.core.logger import log_agent
+                    logs.append(log_agent(
+                        booking_id=booking_id,
+                        agent="Intent Agent",
+                        action="Resolving location from profile",
+                        status="success",
+                        reasoning=f"User did not specify location in text. Auto-populated location using saved profile address: '{saved_loc}'.",
+                    ))
+            
+            # Fetch coordinates if not already passed, and if the intent location is derived from the profile's address/city.
+            if not user_coords:
+                profile_address = profile.get("address", "")
+                profile_city_prov = f"{profile.get('city', '')}, {profile.get('province', '')}"
+                if (intent.location == profile_address or intent.location == profile_city_prov or 
+                    (profile_address and profile_address in intent.location) or (intent.location and intent.location in profile_address)):
+                    coords = profile.get("coordinates")
+                    if isinstance(coords, dict) and "latitude" in coords and "longitude" in coords:
+                        user_coords = {
+                            "latitude": coords["latitude"],
+                            "longitude": coords["longitude"]
+                        }
+
+    booking_updates = {
+        "status": "searching",
+        "extracted_intent": intent.model_dump()
+    }
+    if user_coords:
+        booking_updates["user_coordinates"] = user_coords
+
+    db.update_booking(booking_id, booking_updates)
     db.save_agent_logs(booking_id, logs)
     db.save_agent_trace(booking_id, logs)
 
@@ -170,6 +211,7 @@ def orchestrate_analyze(user_id: str, text: str) -> AnalyzeResponse:
         intent=intent,
         logs=logs,
     )
+
 
 
 # ── Step 2 ────────────────────────────────────────────────────────────────────

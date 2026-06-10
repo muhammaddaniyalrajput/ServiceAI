@@ -205,6 +205,12 @@ def save_agent_trace(booking_id: str, steps: list) -> None:
         trace = _mock_agent_logs.setdefault(booking_id, {"booking_id": booking_id, "steps": []})
         trace["steps"].extend(clean_steps)
 
+    try:
+        from app.api.v1.bookings import invalidate_agent_logs
+        invalidate_agent_logs(booking_id)
+    except Exception:
+        pass
+
 
 def get_agent_trace(booking_id: str) -> dict:
     """
@@ -229,7 +235,7 @@ def get_all_providers() -> list:
     Return all providers from Firestore providers collection.
     Falls back to MOCK_PROVIDERS if Firestore is unavailable or collection is empty.
     """
-    from app.data.mock_providers import MOCK_PROVIDERS  # local import avoids circular
+    from app.data.providers import MOCK_PROVIDERS  # local import avoids circular
 
     db = _get_db()
     if db:
@@ -240,3 +246,24 @@ def get_all_providers() -> list:
         logger.warning("providers collection is empty — falling back to MOCK_PROVIDERS.")
 
     return [p.model_dump() for p in MOCK_PROVIDERS]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# USERS
+# ══════════════════════════════════════════════════════════════════════════════
+
+def get_user_profile(user_id: str) -> Optional[dict]:
+    """
+    Fetch user profile document from Firestore 'users' collection.
+    Returns None if the document does not exist or Firestore is in mock mode.
+    """
+    db = _get_db()
+    if db:
+        try:
+            doc_ref = db.collection("users").document(user_id).get()
+            return doc_ref.to_dict() if doc_ref.exists else None
+        except Exception as e:
+            logger.warning("Failed to fetch user profile for user %s: %s", user_id, e)
+            return None
+    return None
+

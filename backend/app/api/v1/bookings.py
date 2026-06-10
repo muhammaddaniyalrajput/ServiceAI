@@ -30,32 +30,36 @@ class LRUCacheWithTTL:
     def __init__(self, maxsize: int = 1000, ttl_seconds: int = 3600):
         self.maxsize = maxsize
         self.ttl_seconds = ttl_seconds
-        # key -> (value, creation_time, expiry_time, last_accessed_time)
         self.cache = {}
+        self.lock = threading.Lock()
 
     def get(self, key):
-        self._cleanup()
-        if key in self.cache:
-            value, creation, expiry, _ = self.cache[key]
-            if expiry > time.time():
-                # Update last accessed time
-                self.cache[key] = (value, creation, expiry, time.time())
-                return value
-            else:
-                del self.cache[key]
-        return None
+        with self.lock:
+            self._cleanup_unlocked()
+            if key in self.cache:
+                value, creation, expiry, _ = self.cache[key]
+                if expiry > time.time():
+                    self.cache[key] = (value, creation, expiry, time.time())
+                    return value
+                else:
+                    del self.cache[key]
+            return None
 
     def set(self, key, value):
-        self._cleanup()
-        if len(self.cache) >= self.maxsize:
-            # Remove least recently used
-            lru_key = min(self.cache.keys(), key=lambda k: self.cache[k][3])
-            del self.cache[lru_key]
-        
-        now = time.time()
-        self.cache[key] = (value, now, now + self.ttl_seconds, now)
+        with self.lock:
+            self._cleanup_unlocked()
+            if len(self.cache) >= self.maxsize:
+                lru_key = min(self.cache.keys(), key=lambda k: self.cache[k][3])
+                del self.cache[lru_key]
+            now = time.time()
+            self.cache[key] = (value, now, now + self.ttl_seconds, now)
 
-    def _cleanup(self):
+    def invalidate(self, key):
+        with self.lock:
+            if key in self.cache:
+                del self.cache[key]
+
+    def _cleanup_unlocked(self):
         """Active removal of expired items or items created > 2 hours ago."""
         now = time.time()
         keys_to_remove = [
@@ -66,6 +70,10 @@ class LRUCacheWithTTL:
             del self.cache[k]
 
 _ranked_cache = LRUCacheWithTTL(maxsize=1000, ttl_seconds=3600)
+_agent_logs_cache = LRUCacheWithTTL(maxsize=1000, ttl_seconds=3)
+
+def invalidate_agent_logs(booking_id: str):
+    _agent_logs_cache.invalidate(booking_id)
 
 
 def cache_ranked(booking_id: str, ranked: list):
@@ -166,10 +174,16 @@ async def get_agent_logs(booking_id: str) -> AgentTraceResponse:
     """
     Returns the full agent reasoning trace for a booking.
     """
+    cached = _agent_logs_cache.get(booking_id)
+    if cached:
+        return cached
+
     trace = await asyncio.to_thread(db.get_agent_trace, booking_id)
     steps = [AgentTraceStep(**s) for s in trace.get("steps", [])]
 
-    return AgentTraceResponse(
+    response = AgentTraceResponse(
         booking_id=booking_id,
         steps=steps,
     )
+    _agent_logs_cache.set(booking_id, response)
+    return response

@@ -15,7 +15,13 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from app.core.config import settings
-from app.core.exceptions import http_exception_handler, generic_exception_handler, validation_exception_handler
+from app.core.exceptions import (
+    http_exception_handler,
+    generic_exception_handler,
+    validation_exception_handler,
+    request_validation_exception_handler,
+)
+from fastapi.exceptions import RequestValidationError
 from app.api.v1.analyze   import router as analyze_router
 from app.api.v1.providers import router as providers_router
 from app.api.v1.bookings  import router as bookings_router
@@ -77,6 +83,7 @@ app.add_middleware(
 
 # ── Exception Handlers ────────────────────────────────────────────────────────
 app.add_exception_handler(HTTPException, http_exception_handler)
+app.add_exception_handler(RequestValidationError, request_validation_exception_handler)
 app.add_exception_handler(ValidationError, validation_exception_handler)
 app.add_exception_handler(Exception, generic_exception_handler)
 

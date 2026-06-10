@@ -1,130 +1,245 @@
-import axios from 'axios';
+import axios, { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import { auth } from '../firebase';
 
-// Use the environment variable, fallback to localhost for safety
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1';
+// ─────────────────────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface AnalyzeRequestPayload {
+  user_id: string;
+  text: string;
+}
+
+export interface FindProvidersPayload {
+  booking_id: string;
+  intent: Record<string, unknown>;
+}
+
+export interface BookServicePayload {
+  booking_id: string;
+  provider_id: string;
+  intent: Record<string, unknown>;
+  device_token: string | null;
+}
+
+/** Pydantic field error shape returned by FastAPI 422 responses */
+interface PydanticFieldError {
+  loc: (string | number)[];
+  msg: string;
+  type: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Axios Instance
+// ─────────────────────────────────────────────────────────────────────────────
+
+const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8000/api/v1';
 
 console.log('[API] Base URL:', API_BASE_URL);
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000, // 30-second timeout
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  timeout: 30_000,
+  headers: { 'Content-Type': 'application/json' },
 });
 
-// Firebase Auth Token request interceptor
-apiClient.interceptors.request.use(async (config) => {
-  try {
-    const user = auth && auth.currentUser;
-    if (user && typeof user.getIdToken === 'function') {
-      const token = await user.getIdToken();
-      config.headers.Authorization = `Bearer ${token}`;
+// ─────────────────────────────────────────────────────────────────────────────
+// Request Interceptor — attach Firebase Auth token
+// ─────────────────────────────────────────────────────────────────────────────
+
+apiClient.interceptors.request.use(
+  async (config: InternalAxiosRequestConfig) => {
+    try {
+      const user = auth?.currentUser;
+      if (user && typeof user.getIdToken === 'function') {
+        const token = await user.getIdToken();
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+    } catch (error) {
+      console.warn('[API] Failed to attach Firebase auth token:', error);
     }
-  } catch (error) {
-    console.warn("Failed to attach Firebase Auth token:", error);
-  }
-  return config;
-}, (error) => {
-  return Promise.reject(error);
-});
+    return config;
+  },
+  (error: AxiosError) => Promise.reject(error),
+);
 
-// Retry interceptor for 5xx errors (max 2 retries with exponential backoff)
+// ─────────────────────────────────────────────────────────────────────────────
+// Response Interceptor — retry on network / 5xx only
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface RetryConfig extends InternalAxiosRequestConfig {
+  __retryCount?: number;
+}
+
+const MAX_RETRIES = 2;
+
 apiClient.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const config = error.config;
+  (response: AxiosResponse) => response,
+  async (error: AxiosError) => {
+    const config = error.config as RetryConfig | undefined;
     if (!config) return Promise.reject(error);
 
-    // Only retry on 5xx server errors or network errors (not 4xx)
     const status = error.response?.status;
-    const isRetryable = !status || status >= 500;
 
-    config.__retryCount = config.__retryCount || 0;
-    if (isRetryable && config.__retryCount < 2) {
+    // ❌ Do NOT retry client errors (4xx) — they won't be fixed by retrying.
+    // Specifically: 422 Validation errors will always fail again with the same payload.
+    const isClientError = status !== undefined && status >= 400 && status < 500;
+    if (isClientError) return Promise.reject(error);
+
+    // ✅ Retry on network errors and 5xx server errors
+    config.__retryCount = config.__retryCount ?? 0;
+    if (config.__retryCount < MAX_RETRIES) {
       config.__retryCount += 1;
-      const delay = Math.pow(2, config.__retryCount) * 1000; // 2s, 4s
-      console.log(`[API] Retrying request (attempt ${config.__retryCount}) after ${delay}ms...`);
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      const delayMs = Math.pow(2, config.__retryCount) * 1000; // 2s, 4s
+      console.log(`[API] Retrying request (attempt ${config.__retryCount}/${MAX_RETRIES}) after ${delayMs}ms...`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
       return apiClient(config);
     }
 
     return Promise.reject(error);
-  }
+  },
 );
 
-// Error mapper to meet specific error message requirements
-const mapError = (error: any): Error => {
-  let message = 'Failed to communicate with backend';
+// ─────────────────────────────────────────────────────────────────────────────
+// Error Mapper — converts Axios errors to user-friendly Error objects
+// ─────────────────────────────────────────────────────────────────────────────
 
-  if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
-    message = 'Request timed out — please try again.';
-  } else if (error.response) {
-    const status = error.response.status;
-    if (status === 404) {
-      message = 'Service not found';
-    } else if (status === 422) {
-      // Extract Pydantic validation details
-      const detail = error.response.data?.detail || error.response.data?.error;
-      if (Array.isArray(detail)) {
-        message = detail.map((d: any) => `${d.loc?.join('.')}: ${d.msg}`).join('; ');
-      } else {
-        message = typeof detail === 'string' ? detail : 'Validation error — check your input.';
-      }
-    } else if (status === 429) {
-      message = 'Too many requests — please wait a moment.';
-    } else if (status === 500) {
-      message = 'AI processing error — please retry';
-    } else {
-      message = error.response.data?.detail || error.response.data?.message || `Server error (${status})`;
+function mapError(error: unknown): Error {
+  if (!(error instanceof AxiosError)) {
+    return new Error(error instanceof Error ? error.message : 'An unexpected error occurred.');
+  }
+
+  // Network error — no response received
+  if (!error.response) {
+    if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+      return new Error('Request timed out — please try again.');
     }
-  } else if (error.request) {
-    message = 'Network error — please check if backend is running.';
-  } else {
-    message = error.message || message;
+    return new Error('Network error — please check your connection and ensure the backend is running.');
   }
 
-  return new Error(message);
-};
+  const status = error.response.status;
+  const data = error.response.data as Record<string, unknown> | undefined;
 
-export const analyzeRequest = async (userId: string, text: string) => {
+  switch (status) {
+    case 400:
+      return new Error(
+        typeof data?.error === 'string' ? data.error : 'Bad request — please check your input.'
+      );
+
+    case 401:
+      return new Error('Authentication failed — please restart the app.');
+
+    case 404:
+      return new Error('Service not found — the endpoint may be unavailable.');
+
+    case 422: {
+      // FastAPI returns validation errors in two possible shapes:
+      // Shape A (Pydantic RequestValidationError): { detail: PydanticFieldError[] }
+      // Shape B (custom handler):                  { error: string, details: [...] }
+      const detail = data?.detail;
+      const customError = data?.error;
+      const customDetails = data?.details;
+
+      if (Array.isArray(detail)) {
+        // Extract the most relevant human-readable error from Pydantic errors
+        const userMessage = (detail as PydanticFieldError[])
+          .map((d) => {
+            // Get the field name (skip 'body' wrapper, take the last meaningful part)
+            const fieldParts = d.loc.filter((p) => p !== 'body');
+            const field = fieldParts.length > 0
+              ? String(fieldParts[fieldParts.length - 1])
+              : 'input';
+            const msg = d.msg
+              .replace('String should have at least', 'Please enter at least')
+              .replace('characters', 'characters for')
+              .replace('Value error,', '');
+            return `${msg} "${field}"`.trim();
+          })
+          .join('\n');
+        return new Error(userMessage || 'Please check your input and try again.');
+      }
+
+      if (typeof customError === 'string') {
+        // Custom validation_exception_handler response
+        if (Array.isArray(customDetails)) {
+          const msgs = (customDetails as Array<{ field: string; message: string }>)
+            .map((d) => d.message)
+            .join('\n');
+          return new Error(msgs || customError);
+        }
+        return new Error(customError);
+      }
+
+      return new Error('Validation error — please check your input and try again.');
+    }
+
+    case 429:
+      return new Error('Too many requests — please wait a moment and try again.');
+
+    case 500:
+      return new Error('The AI service encountered an error — please retry.');
+
+    default: {
+      const serverMsg = typeof data?.detail === 'string'
+        ? data.detail
+        : typeof data?.error === 'string'
+          ? data.error
+          : `Server error (${status})`;
+      return new Error(serverMsg);
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// API Functions
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function analyzeRequest(userId: string, text: string) {
   try {
-    const response = await apiClient.post('/analyze-request', { user_id: userId, text });
+    const payload: AnalyzeRequestPayload = { user_id: userId, text };
+    const response = await apiClient.post('/analyze-request', payload);
     return response.data;
-  } catch (error: any) {
+  } catch (error) {
     throw mapError(error);
   }
-};
+}
 
-export const findProviders = async (bookingId: string, intent: any) => {
+export async function findProviders(bookingId: string, intent: Record<string, unknown>) {
   try {
-    const response = await apiClient.post('/find-providers', { booking_id: bookingId, intent });
+    const payload: FindProvidersPayload = { booking_id: bookingId, intent };
+    const response = await apiClient.post('/find-providers', payload);
     return response.data;
-  } catch (error: any) {
+  } catch (error) {
     throw mapError(error);
   }
-};
+}
 
-export const bookService = async (bookingId: string, providerId: string, intent: any, deviceToken?: string) => {
+export async function bookService(
+  bookingId: string,
+  providerId: string,
+  intent: Record<string, unknown>,
+  deviceToken?: string,
+) {
   try {
-    const response = await apiClient.post('/book-service', {
+    const payload: BookServicePayload = {
       booking_id: bookingId,
       provider_id: providerId,
       intent,
-      device_token: deviceToken || null,  // Always send the field so backend receives it
-    });
+      device_token: deviceToken ?? null,
+    };
+    const response = await apiClient.post('/book-service', payload);
     return response.data;
-  } catch (error: any) {
+  } catch (error) {
     throw mapError(error);
   }
-};
+}
 
-export const getAgentLogs = async (bookingId: string) => {
+export async function getAgentLogs(bookingId: string) {
   try {
     const response = await apiClient.get(`/agent-logs/${bookingId}`);
     return response.data;
-  } catch (error: any) {
+  } catch (error) {
     throw mapError(error);
   }
-};
+}

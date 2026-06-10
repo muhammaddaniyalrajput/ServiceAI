@@ -5,11 +5,14 @@ from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger("google_labs_antigravity")
 
+import threading
+
 class Node:
     def __init__(self, name: str, func: Callable, depends_on: List[str] = None):
         self.name = name
         self.func = func
         self.depends_on = depends_on or []
+        self.lock = threading.Lock()
 
 class AntigravityClient:
     def __init__(self, api_key: str):
@@ -31,28 +34,28 @@ class AntigravityDAG:
         self.results[name] = result
 
     def execute_node_sync(self, name: str, context: Dict[str, Any]) -> Any:
-        if name in self.results:
-            return self.results[name]
-
         node = self.nodes[name]
-        
-        # Resolve dependency results recursively
-        dep_results = {}
-        for dep in node.depends_on:
-            dep_results[dep] = self.execute_node_sync(dep, context)
+        with node.lock:
+            if name in self.results:
+                return self.results[name]
 
-        logger.info(f"Antigravity Node [{name}] executing...")
-        
-        # Execute the wrapper function with error handling
-        try:
-            res = node.func(dep_results, context)
-            self.results[name] = res
-            logger.info(f"Antigravity Node [{name}] completed.")
-            return res
-        except Exception as exc:
-            logger.error(f"Antigravity Node [{name}] failed: {exc}", exc_info=True)
-            # Propagate error so pipeline can handle it
-            raise
+            # Resolve dependency results recursively
+            dep_results = {}
+            for dep in node.depends_on:
+                dep_results[dep] = self.execute_node_sync(dep, context)
+
+            logger.info(f"Antigravity Node [{name}] executing...")
+            
+            # Execute the wrapper function with error handling
+            try:
+                res = node.func(dep_results, context)
+                self.results[name] = res
+                logger.info(f"Antigravity Node [{name}] completed.")
+                return res
+            except Exception as exc:
+                logger.error(f"Antigravity Node [{name}] failed: {exc}", exc_info=True)
+                # Propagate error so pipeline can handle it
+                raise
 
     def run_segment(self, target_nodes: List[str], context: Dict[str, Any]) -> Dict[str, Any]:
         """

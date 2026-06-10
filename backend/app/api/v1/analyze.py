@@ -50,7 +50,8 @@ async def analyze_request(
         result = await asyncio.to_thread(
             orchestrate_analyze,
             user_id=effective_user_id,
-            text=sanitized_text
+            text=sanitized_text,
+            coordinates=payload.coordinates,
         )
         return result
     except Exception as exc:

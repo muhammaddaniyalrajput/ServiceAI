@@ -121,6 +121,7 @@ class AgentTraceStep(BaseModel):
 class AnalyzeRequest(BaseModel):
     user_id: str
     text:    str = Field(..., min_length=3, description="Natural language request")
+    coordinates: Optional[Dict[str, float]] = None
 
 
 class AnalyzeResponse(BaseModel):

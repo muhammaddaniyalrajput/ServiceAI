@@ -24,7 +24,12 @@
       },
       "package": "com.serviceflowai.mobile",
       "googleServicesFile": "./google-services.json",
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "softwareKeyboardLayoutMode": "pan",
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -32,7 +37,18 @@
     },
     "plugins": [
       "expo-location",
-      "expo-notifications"
-    ]
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#ffffff"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "eb6a51e5-3277-475f-b74e-c2595dacaf25"
+      }
+    }
   }
 }

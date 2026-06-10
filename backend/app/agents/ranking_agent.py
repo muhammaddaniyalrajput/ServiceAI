@@ -101,7 +101,7 @@ Write ONE short paragraph (2-3 sentences) explaining why this provider was the b
 Be specific, use numbers, and sound confident. Write in English.
 """
     response = client.models.generate_content(
-        model="gemini-1.5-flash",
+        model="gemini-2.5-flash",
         contents=prompt,
         config=types.GenerateContentConfig(
             temperature=0.4,

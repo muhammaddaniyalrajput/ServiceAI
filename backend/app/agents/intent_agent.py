@@ -232,7 +232,7 @@ def _regex_fallback_parser(text: str) -> dict:
 )
 def _call_gemini(text: str) -> dict:
     response = client.models.generate_content(
-        model="gemini-1.5-flash",
+        model="gemini-2.5-flash",
         contents=f"User request: {text}",
         config=types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
