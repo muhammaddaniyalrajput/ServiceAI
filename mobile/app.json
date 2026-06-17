@@ -26,6 +26,11 @@
       "googleServicesFile": "./google-services.json",
       "edgeToEdgeEnabled": true,
       "softwareKeyboardLayoutMode": "pan",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyAPnU1H_-Sb4Ry0Vu4P8vI28CwA7pVC6Tk"
+        }
+      },
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"

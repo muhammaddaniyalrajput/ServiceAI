@@ -19,6 +19,8 @@ import {
   StatusBar,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../firebase';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
 
 // ─── Animated detail row ──────────────────────────────────────────────────────
@@ -76,8 +78,11 @@ export default function BookingSuccessScreen() {
   // Continuous pulse on the ring
   const pulseScale  = useRef(new Animated.Value(1)).current;
 
+  const [currentStatus, setCurrentStatus] = React.useState('pending');
+  const [providerDetails, setProviderDetails] = React.useState<any>(null);
+
   useEffect(() => {
-    // Staggered entrance
+    // ── Entrance animations ──
     Animated.sequence([
       Animated.parallel([
         Animated.spring(iconScale,   { toValue: 1, useNativeDriver: true, damping: 10, stiffness: 100 }),
@@ -104,17 +109,41 @@ export default function BookingSuccessScreen() {
     });
   }, []);
 
-  // Resolve booking data from either full booking object or flat params
   const bookingData = confirmation?.booking ?? confirmation ?? {};
-  const providerName   = bookingData.provider?.name   ?? confirmation?.provider_name   ?? 'N/A';
+  const initialProvider = bookingData.provider ?? confirmation?.provider;
   const serviceType    = bookingData.provider?.service ?? confirmation?.service_type    ?? 'N/A';
-  const scheduledAt    = bookingData.scheduled_at      ?? confirmation?.scheduled_time  ?? 'ASAP';
+  const scheduledAt    = bookingData.scheduled_at      ?? confirmation?.scheduled_time  ?? 'Negotiating...';
   const estimatedCost  = bookingData.total_estimated_cost
     ? `Rs. ${bookingData.total_estimated_cost}`
     : (confirmation?.estimated_price ? `Rs. ${confirmation.estimated_price}` : 'N/A');
   const confirmationCode = bookingData.confirmation_code ?? null;
   const bookingIdStr   = bookingData.booking_id ?? confirmation?.booking_id ?? 'N/A';
   const etaMinutes     = bookingData.eta_minutes ?? confirmation?.eta_minutes ?? null;
+
+  useEffect(() => {
+    if (!bookingIdStr || bookingIdStr === 'N/A' || !db) return;
+    
+    // Listen to firestore for booking status changes
+    const docRef = doc(db, 'bookings', bookingIdStr);
+    const unsubscribe = onSnapshot(docRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        if (data.status) {
+          setCurrentStatus(data.status);
+        }
+        if (data.provider) {
+          setProviderDetails(data.provider);
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, [bookingIdStr]);
+
+  const resolvedProvider = providerDetails || initialProvider;
+  const providerName = resolvedProvider?.name ?? confirmation?.provider_name ?? 'Waiting for provider...';
+
+  const isAccepted = currentStatus === 'accepted';
+  const isConfirmed = currentStatus === 'confirmed';
 
   return (
     <View style={styles.flex}>
@@ -153,9 +182,15 @@ export default function BookingSuccessScreen() {
         <Animated.View
           style={[styles.titleBlock, { opacity: titleOpacity, transform: [{ translateY: titleSlide }] }]}
         >
-          <Text style={styles.title}>Booking Confirmed!</Text>
+          <Text style={styles.title}>
+            {isConfirmed ? 'Booking Confirmed!' : isAccepted ? 'Provider Accepted!' : 'Job Requested!'}
+          </Text>
           <Text style={styles.subtitle}>
-            Your service professional has been notified and is on the way.
+            {isConfirmed 
+              ? 'Your service professional has been notified and is on the way.'
+              : isAccepted
+              ? 'The provider has accepted your request. Please chat to negotiate timing.'
+              : 'Broadcasting your request to nearby professionals. Awaiting acceptance...'}
           </Text>
         </Animated.View>
 
@@ -206,12 +241,42 @@ export default function BookingSuccessScreen() {
           </View>
         </Animated.View>
 
-        {/* ── CTA ── */}
+        {/* ── CTAs ── */}
         <Animated.View style={[styles.ctaWrapper, { opacity: cardOpacity }]}>
+          {(isAccepted || isConfirmed) ? (
+            <PrimaryButton
+              label={isConfirmed ? "Track Provider Live 🗺️" : "Chat & Negotiate Timing 💬"}
+              onPress={() => {
+                if (isConfirmed) {
+                  const providerCoords = resolvedProvider
+                    ? { latitude: resolvedProvider.latitude, longitude: resolvedProvider.longitude }
+                    : { latitude: 33.6844, longitude: 73.0479 };
+                  const userCoords = confirmation?.user_coordinates
+                    ?? { latitude: providerCoords.latitude + 0.015, longitude: providerCoords.longitude + 0.012 };
+                  navigation.navigate('LiveTracking', {
+                    bookingId: bookingIdStr,
+                    providerCoordinates: providerCoords,
+                    userCoordinates: userCoords,
+                    providerName: providerName,
+                  });
+                } else {
+                  navigation.navigate('Chat', {
+                    bookingId: bookingIdStr,
+                    providerName: providerName,
+                  });
+                }
+              }}
+              showArrow
+            />
+          ) : (
+            <View style={styles.waitingBtn}>
+              <Text style={styles.waitingText}>Waiting for acceptance...</Text>
+            </View>
+          )}
           <PrimaryButton
             label="Back to Home"
             onPress={() => navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] })}
-            showArrow
+            style={styles.secondaryBtn}
           />
         </Animated.View>
       </ScrollView>
@@ -279,5 +344,21 @@ const styles = StyleSheet.create({
   pillPurple: { backgroundColor: 'rgba(168,85,247,0.1)',  borderColor: 'rgba(168,85,247,0.35)' },
   pillText:   { fontSize: 11, fontWeight: '700', color: '#94a3b8' },
 
-  ctaWrapper: { width: '100%' },
+  ctaWrapper: { width: '100%', gap: 10 },
+  secondaryBtn: {
+    backgroundColor: 'rgba(30,41,59,0.85)',
+    borderWidth: 1,
+    borderColor: 'rgba(51,65,85,0.7)',
+  },
+  waitingBtn: {
+    backgroundColor: 'rgba(51,65,85,0.5)',
+    paddingVertical: 16,
+    borderRadius: 14,
+    alignItems: 'center',
+  },
+  waitingText: {
+    color: '#94a3b8',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
 });

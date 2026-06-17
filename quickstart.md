@@ -1,15 +1,18 @@
 # ServiceFlow AI — Quickstart Guide
 
-This guide will help you set up and run the ServiceFlow AI application (FastAPI backend & React Native Expo mobile client) on your local development machine.
+This guide will walk you through setting up and running the three main components of the ServiceFlow AI application:
+1. **FastAPI Backend Server** (with Multi-Agent DAG Orchestrator)
+2. **Customer Mobile Application** (`mobile`)
+3. **Provider Mobile Application** (`mobile-provider`)
 
 ---
 
 ## 1. Backend Setup
 
-The backend is built with FastAPI, using an agentic pipeline managed by the Google Antigravity DAG engine.
+The backend is built with FastAPI, using an agentic pipeline managed by the Google Labs Antigravity DAG engine.
 
 ### Prerequisites
-- Python 3.10 or higher installed.
+*   Python 3.11 or higher installed.
 
 ### Steps
 1. Navigate to the `backend` directory:
@@ -21,7 +24,7 @@ The backend is built with FastAPI, using an agentic pipeline managed by the Goog
    ```bash
    python -m venv venv
    # On Windows (PowerShell):
-   .\venv\Scripts\activate
+   .\venv\Scripts\Activate.ps1
    # On Windows (CMD):
    .\venv\Scripts\Activate.bat
    # On macOS/Linux:
@@ -34,40 +37,41 @@ The backend is built with FastAPI, using an agentic pipeline managed by the Goog
    ```
 
 4. Configure your Environment Variables:
-   - Copy `.env.example` to `.env`:
-     ```bash
-     copy .env.example .env
-     ```
-   - Open `.env` and fill in your keys:
-     - `GEMINI_API_KEY`: Your Google Gemini API Key.
-     - `ANTIGRAVITY_API_KEY`: Your Antigravity key.
-     - `GOOGLE_MAPS_API_KEY`: Required if `USE_MOCK_MAPS=False` to compute driving distances.
+   *   Copy `.env.example` to `.env`:
+       ```powershell
+       Copy-Item .env.example .env
+       ```
+   *   Open `.env` and configure your API keys:
+       *   `GEMINI_API_KEY`: Your Google Gemini API Key.
+       *   `GOOGLE_MAPS_API_KEY`: Optional. Required to compute real-world driving distances (set `USE_MOCK_MAPS=False` in settings to activate).
+       *   `FIREBASE_CREDENTIALS_JSON_PATH`: Optional. Path to your `firebase-admin.json` private key file for Firestore integration.
+       *   *Note: If no Firestore credentials or Gemini keys are provided, the backend will automatically fall back to mock/in-memory mode for development and local testing.*
 
-5. *(Optional)* Seed the Firestore database with mock service providers:
+5. Seed the Firestore database with mock service providers (optional, requires credentials):
    ```bash
    python seed_firestore.py
    ```
-   *Note: If Firestore is not enabled or credentials are not found, the application will automatically fall back to mock/in-memory mode, so you can develop without additional setup.*
 
 6. Start the FastAPI local server:
    ```bash
-   # Bind to 0.0.0.0 so that physical devices on the same Wi-Fi can connect to it!
+   # Bind to 0.0.0.0 so that physical devices on the same Wi-Fi can connect
    uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
    ```
-   *If you only want to test locally on an emulator on the same machine, you can run:*
-   ```bash
-   uvicorn app.main:app --port 8000 --reload
-   ```
+
+7. Verify the backend is running:
+   Open your browser and visit:
+   *   **API Root**: http://localhost:8000
+   *   **Swagger Docs (Interactive)**: http://localhost:8000/docs
+   *   **Health Check**: http://localhost:8000/health (Expected: `{"status": "ok"}`)
 
 ---
 
-## 2. Mobile Setup
+## 2. Customer Mobile Setup (`mobile`)
 
-The mobile application is a React Native app built using Expo.
+The customer application is a React Native app built using Expo.
 
 ### Prerequisites
-- Node.js (v18 or higher recommended) and npm installed.
-- Expo Go app installed on your physical mobile device (available on Google Play Store and iOS App Store) for testing, or an Android/iOS emulator.
+*   Node.js (v18 or higher recommended) and npm installed.
 
 ### Steps
 1. Navigate to the `mobile` directory:
@@ -77,51 +81,84 @@ The mobile application is a React Native app built using Expo.
 
 2. Install dependencies:
    ```bash
+   npm install --legacy-peer-deps
+   ```
+
+3. Configure Environment Variables:
+   *   Create a `.env` file matching `.env.example`:
+       ```env
+       EXPO_PUBLIC_API_URL=http://YOUR_LOCAL_IP:8000/api/v1
+       ```
+   *   *Note: Replace `YOUR_LOCAL_IP` with your computer's local network IP address (e.g. `192.168.1.50`), which you can find by running `ipconfig` (Windows) or `ifconfig` (macOS/Linux). Do not use `localhost` or `127.0.0.1` as physical devices and emulators cannot connect to your PC via those interfaces.*
+
+4. Start the Expo development server:
+   ```bash
+   # Run with cleared cache to prevent bundling errors
+   npx expo start -c
+   ```
+
+5. Open the app:
+   *   **Android Emulator**: Press `a` in the terminal.
+   *   **iOS Simulator**: Press `i` in the terminal.
+   *   **Expo Go (Physical Phone)**: Scan the QR code displayed in the terminal with the Expo Go app (Android) or the native Camera app (iOS).
+   *   *Note: Bypassing `FIS_AUTH_ERROR`: Expo Go runs with Expo's native signature, which causes Firebase Installations Service (FIS) token generation warnings. The app catches this error, logs a warning, skips push notifications, and continues functioning normally.*
+
+---
+
+## 3. Provider Mobile Setup (`mobile-provider`)
+
+The provider app is a React Native app built using Expo 56 and Expo Router.
+
+### Prerequisites
+*   Node.js (v18 or higher recommended) and npm installed.
+
+### Steps
+1. Navigate to the `mobile-provider` directory:
+   ```bash
+   cd mobile-provider
+   ```
+
+2. Install dependencies:
+   ```bash
    npm install
    ```
 
 3. Configure Environment Variables:
-   - Copy `.env.example` to `.env`:
-     ```bash
-     copy .env.example .env
-     ```
-   - Edit `.env` and configure `EXPO_PUBLIC_API_URL`.
-     - **For Emulator testing**: Use `http://10.0.2.2:8000/api/v1` (Android emulator) or `http://127.0.0.1:8000/api/v1` (iOS Simulator).
-     - **For Physical Device testing**: Use your computer's local network IP address (e.g. `http://192.168.24.139:8000/api/v1`). Make sure your mobile device and computer are on the same Wi-Fi network. *Note: Match the IP address displayed by Expo when Metro starts.*
+   *   Create a `.env` file:
+       ```env
+       EXPO_PUBLIC_API_URL=http://YOUR_LOCAL_IP:8000/api/v1
+       ```
+   *   Ensure `YOUR_LOCAL_IP` matches the IP used in the customer app.
 
-4. Start the Expo developer server:
+4. Start the Expo development server:
    ```bash
-   npm run start
+   npx expo start
    ```
 
-5. Scan the QR code displayed in the terminal with the Expo Go app (on Android) or your Camera app (on iOS) to launch the application.
-
-### Important: Testing Push Notifications
-- **Using Expo Go**: 
-  FCM push notification tokens require a native app signature matching your Firebase project settings. Because Expo Go is signed with Expo Inc.'s certificate, attempting to generate tokens inside Expo Go results in a Firebase Installations Service error (`FIS_AUTH_ERROR`).
-  
-  **The app handles this gracefully** by detecting Expo Go, skipping push registration, logging a warning, and continuing normal operation.
-  
-- **For Production / Full Push Notification Testing**:
-  To test actual FCM token generation and notifications, you must build a custom **Development Build** which bakes your `google-services.json`/`GoogleService-Info.plist` and signing keys into the native client:
-  ```bash
-  # 1. Install dev client
-  npx expo install expo-dev-client
-  
-  # 2. Run local native build (requires Android SDK / Xcode)
-  npx expo run:android
-  # or
-  npx expo run:ios
-  ```
+5. Open the app using emulators (press `a` or `i`) or Expo Go by scanning the Metro QR code.
 
 ---
 
-## 3. Running Integration Tests
+## 4. Testing & Simulations
 
-To verify that all components are talking to each other and the agent pipeline executes successfully:
-1. Ensure your FastAPI server is running.
-2. From the `backend` directory, run:
-   ```bash
-   python test.py
-   ```
-   This will execute the multi-stage intent discovery and booking simulation pipeline.
+### 4.1 Running Backend Integration Tests
+To verify that the agentic orchestrator pipeline executes successfully, run the following command from the `backend` directory (with active virtual environment):
+```bash
+python test.py
+```
+This runs a simulated client request and tests Intent extraction, Provider Discovery, Ranking, and Booking confirmation.
+
+### 4.2 Running the Provider Simulation Tool
+If you want to test the entire customer app lifecycle (booking, negotiation, coordinate tracking, status progression) without manually operating the provider app, you can use the backend provider simulation tool:
+```bash
+cd backend
+python test_provider_simulation.py --register --auto_accept --auto_location --auto_status
+```
+
+#### Command Options:
+*   `--register`: Auto-registers a new provider profile in Firestore.
+*   `--auto_accept`: Automatically claims any broadcasted job matching the provider's details.
+*   `--auto_location`: Periodically streams mock GPS coordinates (simulating movement toward the customer) to the backend.
+*   `--auto_status`: Automatically progresses the job status through:
+    `on_the_way` → `arrived` → `in_progress` → `completed`.
+*   `--interval [seconds]`: Adjust the delay between coordinate streams and status updates (default: 5 seconds).

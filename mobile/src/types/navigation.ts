@@ -35,6 +35,20 @@ export type RootStackParamList = {
     confirmation: any;
   };
 
+  /** Real-time provider tracking map */
+  LiveTracking: {
+    bookingId: string;
+    providerCoordinates: { latitude: number; longitude: number };
+    userCoordinates: { latitude: number; longitude: number };
+    providerName: string;
+  };
+
+  /** Real-time provider chat negotiation */
+  Chat: {
+    bookingId: string;
+    providerName: string;
+  };
+
   /** Email Verification Screen */
   EmailVerification: undefined;
 };

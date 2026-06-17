@@ -22,6 +22,8 @@ import EmailVerificationScreen from './src/screens/EmailVerificationScreen';
 import MainTabNavigator from './src/navigation/MainTabNavigator';
 import ProvidersScreen from './src/screens/ProvidersScreen';
 import BookingSuccessScreen from './src/screens/BookingSuccessScreen';
+import LiveTrackingScreen from './src/screens/LiveTrackingScreen';
+import ChatScreen from './src/screens/ChatScreen';
 
 import { RootStackParamList } from './src/types/navigation';
 
@@ -238,6 +240,16 @@ export default function App() {
                 name="BookingSuccess"
                 component={BookingSuccessScreen}
                 options={{ title: 'Booking Confirmed 🎉', headerBackVisible: false }}
+              />
+              <Stack.Screen
+                name="LiveTracking"
+                component={LiveTrackingScreen}
+                options={{ title: 'Live Tracking 🗺️' }}
+              />
+              <Stack.Screen
+                name="Chat"
+                component={ChatScreen}
+                options={{ headerShown: false }}
               />
             </>
           )}

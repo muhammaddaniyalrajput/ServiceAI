@@ -25,6 +25,7 @@ from fastapi.exceptions import RequestValidationError
 from app.api.v1.analyze   import router as analyze_router
 from app.api.v1.providers import router as providers_router
 from app.api.v1.bookings  import router as bookings_router
+from app.api.v1.provider  import router as provider_router
 from pydantic import ValidationError
 
 logger = logging.getLogger("serviceflow")
@@ -92,6 +93,7 @@ API_V1 = "/api/v1"
 app.include_router(analyze_router,   prefix=API_V1, tags=["Stage 1 — Intent"])
 app.include_router(providers_router, prefix=API_V1, tags=["Stage 2 — Discovery & Ranking"])
 app.include_router(bookings_router,  prefix=API_V1, tags=["Stage 3 — Booking"])
+app.include_router(provider_router,  prefix=API_V1, tags=["Provider Operations"])
 
 
 @app.get("/", tags=["Health"])

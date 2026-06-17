@@ -7,7 +7,22 @@ __pycache__/
 .env
 backend/.env
 mobile/.env
+mobile-provider/.env
+
+# Firebase Configs & Service accounts
+google-services.json
+GoogleService-Info.plist
+firebase-admin.json
+
+# Credentials & Keys
+*.jks
+*.p8
+*.p12
+*.key
+*.pem
+*.mobileprovision
 
 # Node modules
 node_modules/
 mobile/node_modules/
+mobile-provider/node_modules/

@@ -13,13 +13,19 @@ from enum import Enum
 # ──────────────────────────────────────────────
 
 class BookingStatus(str, Enum):
-    pending_intent   = "pending_intent"
-    searching        = "searching"
-    ranking          = "ranking"
-    confirmed        = "confirmed"
-    notified         = "notified"
-    completed        = "completed"
-    failed           = "failed"
+    pending_intent     = "pending_intent"
+    searching          = "searching"
+    ranking            = "ranking"
+    confirmed          = "confirmed"
+    pending            = "pending"
+    pending_acceptance = "pending_acceptance"
+    accepted           = "accepted"
+    on_the_way         = "on_the_way"
+    arrived            = "arrived"
+    in_progress        = "in_progress"
+    notified           = "notified"
+    completed          = "completed"
+    failed             = "failed"
 
 
 class Urgency(str, Enum):
@@ -65,6 +71,8 @@ class Provider(BaseModel):
     experience_yrs: int           = Field(1)
     is_verified:   bool           = False
     distance_km:   Optional[float] = None
+    city:          Optional[str] = None
+    address:       Optional[str] = None
 
 
 class RankedProvider(BaseModel):
@@ -199,3 +207,119 @@ class ProvidersListResponse(BaseModel):
     success:    bool = True
     total:      int
     categories: List[ServiceCategory]
+
+
+# ──────────────────────────────────────────────
+# Provider Operations (for provider mobile app)
+# ──────────────────────────────────────────────
+
+class ProviderProfile(BaseModel):
+    """Detailed provider profile with full state."""
+    provider_id:       str
+    name:              str
+    phone:             str
+    service:           str
+    hourly_rate:       int
+    experience_yrs:    int
+    rating:            float
+    is_verified:       bool
+    is_available:      bool
+    current_coordinates: Dict[str, float] = Field(default_factory=dict)  # {"latitude": 33.6844, "longitude": 73.0479}
+    fcm_token:         Optional[str] = None
+    updated_at:        str
+    city:              Optional[str] = None
+    address:           Optional[str] = None
+
+
+class ProviderRegisterRequest(BaseModel):
+    """Register a new service provider."""
+    name:           str = Field(..., min_length=2, max_length=100)
+    phone:          str = Field(..., min_length=10, max_length=20)
+    service:        str = Field(..., description="Service type e.g. 'AC Technician', 'Plumber'")
+    hourly_rate:    int = Field(..., gt=0, description="PKR per hour")
+    experience_yrs: int = Field(default=1, ge=0)
+    fcm_token:      Optional[str] = None
+    city:           Optional[str] = None
+    address:        Optional[str] = None
+    latitude:       Optional[float] = 0.0
+    longitude:      Optional[float] = 0.0
+
+
+class ProviderRegisterResponse(BaseModel):
+    """Response after provider registration."""
+    success:       bool = True
+    provider_id:   str
+    profile:       ProviderProfile
+    message:       str
+
+
+class ProviderStatusRequest(BaseModel):
+    """Toggle provider availability status."""
+    is_available: bool
+
+
+class ProviderStatusResponse(BaseModel):
+    success:      bool = True
+    provider_id:  str
+    is_available: bool
+    updated_at:   str
+
+
+class ProviderLocationUpdate(BaseModel):
+    """Stream provider's current coordinates."""
+    latitude:  float = Field(..., ge=-90, le=90)
+    longitude: float = Field(..., ge=-180, le=180)
+    booking_id: Optional[str] = None  # Optional: associated active job
+
+
+class ProviderLocationResponse(BaseModel):
+    success:    bool = True
+    provider_id: str
+    message:    str
+
+
+class ProviderJob(BaseModel):
+    """A job assigned to the provider."""
+    booking_id:            str
+    user_id:               str
+    status:                BookingStatus
+    service_type:          str
+    customer_name:         str
+    customer_phone:        str
+    customer_coordinates:  Dict[str, float]  # {"latitude": 33.6515, "longitude": 73.0812}
+    location_description:  str  # e.g. "G-13, Islamabad"
+    requested_at:          str  # ISO timestamp
+    urgency:               str
+    total_estimated_cost:  int  # in PKR
+    eta_minutes:           int
+
+
+class ProviderJobsResponse(BaseModel):
+    success:  bool = True
+    jobs:     List[ProviderJob]
+    total:    int
+
+
+class ProviderJobRespondRequest(BaseModel):
+    """Accept or reject a job offer."""
+    action: str = Field(..., description="'accept' or 'reject'")
+
+
+class ProviderJobRespondResponse(BaseModel):
+    success:    bool = True
+    booking_id: str
+    action:     str
+    status:     BookingStatus
+    message:    str
+
+
+class ProviderJobStatusUpdateRequest(BaseModel):
+    """Update job progress status."""
+    status: BookingStatus = Field(..., description="on_the_way | arrived | in_progress | completed")
+
+
+class ProviderJobStatusUpdateResponse(BaseModel):
+    success:    bool = True
+    booking_id: str
+    status:     BookingStatus
+    updated_at: str

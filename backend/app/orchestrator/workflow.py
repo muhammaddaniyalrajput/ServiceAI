@@ -37,12 +37,14 @@ Improvements:
 import uuid
 import time
 import logging
+import threading
 from app.agents.intent_agent       import run_intent_agent
 from app.agents.discovery_agent    import run_discovery_agent
 from app.agents.ranking_agent      import run_ranking_agent
 from app.agents.booking_agent      import run_booking_agent
 from app.agents.notification_agent import run_notification_agent
 from app.agents.followup_agent     import run_followup_agent
+from app.agents.provider_simulation_agent import run_provider_simulation
 from app.services                  import firebase_db as db
 from app.core.config               import settings
 from app.orchestrator.google_labs_antigravity import AntigravityClient, AntigravityDAG
@@ -53,6 +55,7 @@ from app.models.schemas            import (
     IntentOutput,
     RankedProvider,
     Provider,
+    BookingStatus,
 )
 
 logger = logging.getLogger("serviceflow")
@@ -289,12 +292,78 @@ def orchestrate_book_service(
 
     all_logs = book_logs + notif_logs + fu_logs
 
-    db.update_booking(booking_id, {
-        "status":  "confirmed",
-        "booking": booking.model_dump(exclude={"provider"}),
-    })
-    db.save_agent_logs(booking_id, all_logs)
-    db.save_agent_trace(booking_id, all_logs)
+    # Check if the selected provider is a real registered provider in the DB
+    is_real_provider = False
+    provider_fcm_token = None
+    if provider_id:
+        provider_doc = db.get_provider_by_id(provider_id)
+        if provider_doc and provider_doc.get("uid"):
+            is_real_provider = True
+            provider_fcm_token = provider_doc.get("fcm_token")
+
+    if is_real_provider:
+        # Override the status of the booking result to pending
+        booking.status = BookingStatus.pending
+        
+        # Log dispatch action in agent logs/timeline
+        from app.core.logger import log_agent
+        all_logs.append(log_agent(
+            booking_id=booking_id,
+            agent="Booking Agent",
+            action="Broadcasting job to providers",
+            status="success",
+            reasoning=f"Broadcasting job request for {intent.service_type}. Awaiting provider acceptance.",
+        ))
+
+        db.update_booking(booking_id, {
+            "status":  "pending",
+            "booking": booking.model_dump(exclude={"provider"}),
+            "provider": selected_provider.model_dump(),
+            "scheduled_at": booking.scheduled_at,
+            "total_estimated_cost": booking.total_estimated_cost,
+        })
+        db.save_agent_logs(booking_id, all_logs)
+        db.save_agent_trace(booking_id, all_logs)
+
+        # Send push notification to the provider's device (broadcast alert could be sent here to ALL matching providers instead)
+        if provider_fcm_token:
+            try:
+                from app.services.fcm_service import send_fcm
+                payload = {
+                    "notification": {
+                        "title": "New Job Offered! 🔧",
+                        "body": f"New request for {intent.service_type}. Tap to view details and accept.",
+                    },
+                    "data": {
+                        "booking_id": booking_id,
+                        "status": "pending",
+                        "type": "new_booking_dispatch",
+                    },
+                }
+                send_fcm(payload, device_token=provider_fcm_token)
+                logger.info("[ORCHESTRATOR] FCM job broadcast sent to provider %s", provider_id)
+            except Exception as e:
+                logger.error("[ORCHESTRATOR] Failed to send FCM job broadcast to provider: %s", e)
+    else:
+        db.update_booking(booking_id, {
+            "status":  "confirmed",
+            "booking": booking.model_dump(exclude={"provider"}),
+            "provider": selected_provider.model_dump(),
+            "scheduled_at": booking.scheduled_at,
+            "total_estimated_cost": booking.total_estimated_cost,
+        })
+        db.save_agent_logs(booking_id, all_logs)
+        db.save_agent_trace(booking_id, all_logs)
+
+        # ── Launch Provider Simulation Agent (background daemon) ──────────────
+        # Simulates the provider lifecycle: accept → travel → arrive → complete
+        threading.Thread(
+            target=run_provider_simulation,
+            args=(booking_id, selected_provider, intent, device_token),
+            daemon=True,
+            name=f"sim-{booking_id[:8]}",
+        ).start()
+        logger.info("[ORCHESTRATOR] Provider simulation spawned for %s", booking_id)
 
     return BookServiceResponse(
         booking=booking,

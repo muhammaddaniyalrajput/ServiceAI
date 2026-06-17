@@ -1,6 +1,8 @@
 # ServiceFlow AI
 
-Agentic AI Service Orchestration Platform — Built for hackathon demo using Gemini, Antigravity, FastAPI, Firebase, and React Native Expo.
+ServiceFlow AI is a production-grade, double-sided **Agentic AI Service Orchestration Platform**. It allows customers to book home services using natural language (English, Urdu, or Roman Urdu) parsed by LLM agents, while enabling service providers to manage bookings, track earnings, and stream real-time location tracking in a cohesive double-sided marketplace.
+
+The system features a thread-safe multi-agent DAG engine (with 7 specialized agents), a FastAPI backend, and two React Native Expo mobile apps (Customer App and Provider App) backed by Firebase Firestore.
 
 ---
 
@@ -8,262 +10,121 @@ Agentic AI Service Orchestration Platform — Built for hackathon demo using Gem
 
 ```
 ServiceAI/
-├── backend/     # FastAPI + Multi-Agent Orchestrator (Python)
-└── mobile/      # React Native Expo App (TypeScript)
+├── backend/            # FastAPI + Multi-Agent DAG Orchestrator (Python)
+├── mobile/             # React Native Expo App — Customer Client (TypeScript + NativeWind v4)
+└── mobile-provider/    # React Native Expo App — Provider Client (TypeScript + StyleSheet)
 ```
 
 ---
 
 ## Prerequisites
 
-Make sure the following are installed before running anything:
+Ensure the following tools are installed before running the applications:
 
-| Tool | Check Command | Minimum Version |
-|------|--------------|-----------------|
-| Python | `python --version` | 3.11+ |
-| Node.js | `node --version` | 18+ |
-| npm | `npm --version` | 9+ |
-| Expo CLI | `npx expo --version` | Latest |
-
----
-
-## Step 1 — Clone & Open the Project
-
-```powershell
-cd d:\ServiceAI
-```
+| Tool | Check Command | Minimum Version | Required For |
+|------|--------------|-----------------|--------------|
+| **Python** | `python --version` | 3.11+ | Backend Server & Simulation Scripts |
+| **Node.js** | `node --version` | 18+ | Customer & Provider Mobile Apps |
+| **npm** | `npm --version` | 9+ | Dependency Management for Mobile |
+| **Expo CLI** | `npx expo --version` | Latest | Running Metro Bundler & Dev Clients |
 
 ---
 
-## Step 2 — Backend Setup (FastAPI)
+## Quick Start — Run Commands
 
-### 2a. Navigate to the backend folder
+Here are the terminal commands to quickly start each component of the platform:
+
+### 1. Start the FastAPI Backend
 ```powershell
 cd d:\ServiceAI\backend
-```
-
-### 2b. Activate the virtual environment
-```powershell
-# Windows PowerShell
+# Activate virtual environment (Windows)
 .\venv\Scripts\Activate.ps1
-
-# If venv doesn't exist yet, create it first:
-python -m venv venv
-.\venv\Scripts\Activate.ps1
+# Start development server
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### 2c. Install dependencies
-```powershell
-pip install -r requirements.txt
-```
-
-### 2d. Configure environment variables
-```powershell
-# Copy the example env file
-Copy-Item .env.example .env
-```
-
-Then open `.env` and fill in your keys:
-```env
-GEMINI_API_KEY=your_gemini_api_key_here
-GOOGLE_MAPS_API_KEY=your_maps_api_key_here   # optional
-FIREBASE_CREDENTIALS_JSON_PATH=./firebase-admin.json  # optional
-```
-
-> **Note:** The app runs in **mock mode** without Firebase credentials. You only need `GEMINI_API_KEY` to test the full AI pipeline.
-
-### 2e. Start the backend server
-```powershell
-uvicorn app.main:app --reload --port 8000
-```
-
-### 2f. Verify the backend is running
-Open your browser and visit:
-- **API Root:** http://localhost:8000
-- **Swagger Docs (Interactive):** http://localhost:8000/docs
-- **Health Check:** http://localhost:8000/health
-
-Expected response from `/health`:
-```json
-{ "status": "ok" }
-```
-
----
-
-## Step 3 — Test the AI Agents (Backend Only)
-
-Use Swagger UI at http://localhost:8000/docs or run these `curl` commands:
-
-### Test Intent Extraction (Agent 1)
-```powershell
-curl -X POST http://localhost:8000/api/v1/analyze-request `
-  -H "Content-Type: application/json" `
-  -d '{"user_id": "user_001", "text": "Mujhe kal subah G-13 mein AC technician chahiye"}'
-```
-
-### Find & Rank Providers (Agents 2 + 3)
-```powershell
-# Use the booking_id from the response above
-curl -X POST http://localhost:8000/api/v1/find-providers `
-  -H "Content-Type: application/json" `
-  -d '{
-    "booking_id": "PASTE_BOOKING_ID_HERE",
-    "intent": {
-      "service_type": "AC Technician",
-      "location": "G-13, Islamabad",
-      "urgency": "medium",
-      "language": "roman_ur",
-      "confidence": 0.97
-    }
-  }'
-```
-
-### Confirm Booking (Agents 4 + 5 + 6)
-```powershell
-curl -X POST http://localhost:8000/api/v1/book-service `
-  -H "Content-Type: application/json" `
-  -d '{
-    "booking_id": "PASTE_BOOKING_ID_HERE",
-    "provider_id": "prov_001",
-    "intent": {
-      "service_type": "AC Technician",
-      "location": "G-13, Islamabad",
-      "urgency": "medium",
-      "language": "roman_ur",
-      "confidence": 0.97
-    }
-  }'
-```
-
-### Get Agent Reasoning Logs
-```powershell
-curl http://localhost:8000/api/v1/agent-logs/PASTE_BOOKING_ID_HERE
-```
-
-### Get Booking Status
-```powershell
-curl http://localhost:8000/api/v1/booking-status/PASTE_BOOKING_ID_HERE
-```
-
----
-
-## Step 4 — Mobile App Setup (React Native Expo)
-
-### 4a. Open a NEW terminal window and navigate to mobile
+### 2. Start the Customer Mobile App
 ```powershell
 cd d:\ServiceAI\mobile
+# Start development server with cleared cache
+npx expo start -c
 ```
 
-### 4b. Install dependencies (if not already done)
+### 3. Start the Provider Mobile App
 ```powershell
-npm install --legacy-peer-deps
+cd d:\ServiceAI\mobile-provider
+# Start development server
+npx expo start
 ```
 
-### 4c. Configure the API URL
-Open `mobile/.env` (create it if it doesn't exist):
+---
+
+## Core Modules & Tech Stack
+
+### 1. Backend Server (`backend`)
+*   **AI Model**: Gemini 2.0 Flash / Gemini 1.5 Flash (via `GEMINI_API_KEY`)
+*   **Orchestration**: Google Labs Antigravity (Multi-Agent DAG Engine)
+*   **Web Framework**: FastAPI & Uvicorn
+*   **Database & Auth**: Firebase Admin SDK (Firestore Database, Firebase Auth)
+*   **Key Services**: Firebase Cloud Messaging (FCM) for real-time push notification delivery
+*   **Features**: LRU Caching with TTL, concurrency locks (idempotency guards), background daemon simulation thread for mock provider testing.
+
+### 2. Customer Mobile App (`mobile`)
+*   **Framework**: React Native (Expo SDK 54)
+*   **Styling**: NativeWind v4 (TailwindCSS)
+*   **State Management**: Zustand v5 (with persistent storage)
+*   **Features**:
+    *   Natural language service requests with intent confidence visuals
+    *   Reverse geocoding with Google Maps API (auto-location onboarding)
+    *   Real-time chat negotiation with the provider
+    *   Live provider GPS tracking using `react-native-maps` (with progress indicators)
+    *   Timeline viewer to inspect the AI agent reasoning steps in real-time
+
+### 3. Provider Mobile App (`mobile-provider`)
+*   **Framework**: React Native (Expo SDK 56 + Expo Router)
+*   **Styling**: Vanilla React Native `StyleSheet` & Native UI
+*   **State Management**: Zustand v5
+*   **Features**:
+    *   Availability online/offline toggle
+    *   Scrollable jobs board filtering jobs by service and location
+    *   Real-time negotiation chat with quick-presets to propose scheduled timings
+    *   Map-based route view displaying live GPS path to the customer's coordinates
+    *   Background location tracking hook streaming GPS coordinates to the backend every 10 seconds
+    *   Analytics dashboard displaying total earnings, period breakdowns, average ratings, completion rates, and future income projections
+
+---
+
+## Configuration & Environment Setup
+
+Each module requires configuration via environment variables. See the specific configurations below:
+
+### Backend Configuration (`backend/.env`)
+Copy `.env.example` to `.env` and fill in your keys:
+```env
+GEMINI_API_KEY=your_gemini_api_key_here
+GOOGLE_MAPS_API_KEY=your_maps_api_key_here
+FIREBASE_CREDENTIALS_JSON_PATH=./firebase-admin.json
+```
+*Note: The backend runs in **mock/in-memory mode** if Firebase credentials are not found.*
+
+### Customer App Configuration (`mobile/.env`)
+Create `mobile/.env` with your API address:
 ```env
 EXPO_PUBLIC_API_URL=http://YOUR_LOCAL_IP:8000/api/v1
 ```
 
-> **Find your local IP:** Run `ipconfig` in PowerShell and look for **IPv4 Address** (e.g. `192.168.1.10`). Do NOT use `localhost` — Android emulator and Expo Go cannot reach your PC via `localhost`.
-
-### 4d. Start the Expo development server
-```powershell
-# Normal start
-npx expo start
-
-# Start with cleared cache (use this if you see bundling errors)
-npx expo start -c
+### Provider App Configuration (`mobile-provider/.env`)
+Create `mobile-provider/.env` with your API address:
+```env
+EXPO_PUBLIC_API_URL=http://YOUR_LOCAL_IP:8000/api/v1
 ```
 
-### 4e. Open the app
-
-| Platform | Command |
-|----------|---------|
-| Android Emulator | Press `a` in the terminal |
-| Expo Go (Phone) | Scan the QR code shown in terminal |
-| Web Browser | Press `w` in the terminal |
+> [!TIP]
+> **Finding your Local IP Address**: Run `ipconfig` (Windows) or `ifconfig` (macOS/Linux) in your terminal and find your IPv4 Address (e.g. `192.168.1.50`). Do NOT use `localhost` or `127.0.0.1` for testing on physical devices or Android emulators, as they will fail to reach the backend server.
 
 ---
 
-## Step 5 — Verify Everything Works
+## Detailed Setup & Testing
+For step-by-step instructions on setting up environments, seeding databases, running backend unit tests, testing notifications, and executing provider simulation scripts, refer to the [Quickstart Guide](quickstart.md).
 
-### Backend checks
-```powershell
-# Is the server running?
-curl http://localhost:8000/health
-# Expected: {"status":"ok"}
-
-# Can Babel parse the project?
-cd d:\ServiceAI\mobile
-node -e "const b=require('@babel/core'); const c=b.loadPartialConfig({filename:'App.tsx',cwd:process.cwd()}); console.log('Babel OK, presets:', c.options.presets.length);"
-```
-
-### Mobile checks
-```powershell
-cd d:\ServiceAI\mobile
-
-# Are all critical packages installed?
-node -p "require('./node_modules/babel-preset-expo/package.json').version"
-node -p "require('./node_modules/react-native-reanimated/package.json').version"
-node -p "require('./node_modules/nativewind/package.json').version"
-node -p "require('./node_modules/expo/package.json').version"
-```
-
-Expected output:
-```
-12.x.x          ← babel-preset-expo
-3.16.x          ← react-native-reanimated
-4.x.x           ← nativewind
-54.x.x          ← expo
-```
-
----
-
-## Step 6 — Full Reset (if something breaks)
-
-```powershell
-# Clear Metro bundler cache
-cd d:\ServiceAI\mobile
-npx expo start -c
-
-# Full clean reinstall of mobile dependencies
-Remove-Item -Recurse -Force node_modules
-Remove-Item -Force package-lock.json
-npm install --legacy-peer-deps
-
-# Reinstall backend dependencies
-cd d:\ServiceAI\backend
-.\venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
-
----
-
-## Quick Reference — All Commands
-
-```powershell
-# ── Backend ──────────────────────────────────────────────────
-cd d:\ServiceAI\backend
-.\venv\Scripts\Activate.ps1
-uvicorn app.main:app --reload --port 8000
-
-# ── Mobile ───────────────────────────────────────────────────
-cd d:\ServiceAI\mobile
-npx expo start -c
-```
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| AI Model | Gemini 2.0 Flash |
-| Orchestration | Google Antigravity (Multi-Agent DAG) |
-| Backend | FastAPI + Python |
-| Database | Firebase Firestore (mock fallback for local dev) |
-| Mobile | React Native + Expo SDK 54 |
-| Styling | NativeWind v4 (TailwindCSS) |
-| State | Zustand |
-| HTTP | Axios |
+For a complete review of system architectures, API endpoints, agent structures, and database states, refer to the [System Capability Report](system_capability.md).

@@ -95,18 +95,20 @@ def _haversine_km(lat1, lon1, lat2, lon2) -> float:
 def run_discovery_agent(booking_id: str, intent: IntentOutput) -> tuple[List[Provider], list]:
     """
     Returns (list[Provider], list[AgentLog]).
-    Primary source: Google Places API.
-    Fallback: MOCK_PROVIDERS static list.
+    Combines two data sources:
+      1. Real registered providers from Firestore (matching service + city)
+      2. Google Places API results
+    Falls back to MOCK_PROVIDERS if both sources yield nothing.
     """
     logs = []
     from app.services.google_maps import get_distance_km
+    from app.services import firebase_db as db
 
     canonical_service = normalize_service(intent.service_type)
     location_text = intent.location if intent.location.lower() not in ("unknown", "not specified", "") else "Islamabad"
     user_lat, user_lon = _parse_coords(intent.location)
 
     # ── Override with exact coordinates if saved in the booking document ──
-    from app.services import firebase_db as db
     booking = db.get_booking(booking_id)
     if booking:
         user_coords = booking.get("user_coordinates")
@@ -123,6 +125,63 @@ def run_discovery_agent(booking_id: str, intent: IntentOutput) -> tuple[List[Pro
                     reasoning=f"Using saved coordinates ({user_lat:.6f}, {user_lon:.6f}) from user's profile for distance calculations.",
                 ))
 
+    # ── Extract city from location text for Firestore matching ────────────
+    # Try to extract city name from location_text (e.g., "G-13, Islamabad" → "Islamabad")
+    city_hint = None
+    location_lower = location_text.lower().strip()
+    known_cities = ["nawabshah", "karachi", "lahore", "islamabad", "rawalpindi",
+                    "peshawar", "quetta", "multan", "faisalabad", "sialkot", "hyderabad"]
+    for city in known_cities:
+        if city in location_lower:
+            city_hint = city.title()
+            break
+
+    # ══════════════════════════════════════════════════════════════════════
+    # SOURCE 1: Real Registered Providers from Firestore
+    # ══════════════════════════════════════════════════════════════════════
+    registered_dicts = []
+    try:
+        # First try exact service + city match
+        registered_raw = db.get_registered_providers_by_service(canonical_service, city=city_hint)
+
+        # If no city match, try service-only (all cities)
+        if not registered_raw and city_hint:
+            registered_raw = db.get_registered_providers_by_service(canonical_service, city=None)
+
+        if registered_raw:
+            logs.append(log_agent(
+                booking_id=booking_id,
+                agent="Provider Discovery Agent",
+                action="Found registered providers in database",
+                status="processing",
+                reasoning=f"Found {len(registered_raw)} registered provider(s) for '{canonical_service}'"
+                          + (f" in {city_hint}" if city_hint else "") + " from Firestore.",
+                data={"count": len(registered_raw), "source": "Firestore"},
+            ))
+            for rp in registered_raw:
+                # Normalize Firestore provider doc to match Provider schema
+                registered_dicts.append({
+                    "provider_id":    rp.get("provider_id"),
+                    "name":           rp.get("name", "Unknown"),
+                    "service":        rp.get("service", canonical_service),
+                    "location":       f"{rp.get('address', '')}, {rp.get('city', '')}".strip(", "),
+                    "latitude":       rp.get("latitude") or rp.get("current_coordinates", {}).get("latitude", 0.0),
+                    "longitude":      rp.get("longitude") or rp.get("current_coordinates", {}).get("longitude", 0.0),
+                    "rating":         rp.get("rating", 4.5),
+                    "hourly_rate":    rp.get("hourly_rate", 1500),
+                    "experience_yrs": rp.get("experience_yrs", 1),
+                    "is_verified":    rp.get("is_verified", False),
+                    "availability":   ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+                    "city":           rp.get("city"),
+                    "address":        rp.get("address"),
+                })
+    except Exception as e:
+        import logging
+        logging.getLogger("serviceflow").warning("Firestore registered provider lookup failed: %s", e)
+
+    # ══════════════════════════════════════════════════════════════════════
+    # SOURCE 2: Google Places API
+    # ══════════════════════════════════════════════════════════════════════
     logs.append(log_agent(
         booking_id=booking_id,
         agent="Provider Discovery Agent",
@@ -131,30 +190,56 @@ def run_discovery_agent(booking_id: str, intent: IntentOutput) -> tuple[List[Pro
         reasoning=f"Searching Google Places for '{canonical_service}' near '{location_text}'.",
     ))
 
-    # ── Primary: Google Places ─────────────────────────────────────────────────
-    raw_dicts = get_providers_from_google(canonical_service, location_text)
-    source = "Google Places API"
+    google_dicts = get_providers_from_google(canonical_service, location_text)
+
+    # ══════════════════════════════════════════════════════════════════════
+    # MERGE: Registered providers first, then Google Places results
+    # ══════════════════════════════════════════════════════════════════════
+    seen_ids = set()
+    merged_dicts = []
+
+    # Registered providers get priority (placed first)
+    for d in registered_dicts:
+        pid = d.get("provider_id")
+        if pid and pid not in seen_ids:
+            seen_ids.add(pid)
+            merged_dicts.append(d)
+
+    # Then Google Places results
+    for d in google_dicts:
+        pid = d.get("provider_id")
+        if pid and pid not in seen_ids:
+            seen_ids.add(pid)
+            merged_dicts.append(d)
+
+    source = "Firestore + Google Places API"
+    if not registered_dicts and google_dicts:
+        source = "Google Places API"
+    elif registered_dicts and not google_dicts:
+        source = "Firestore registered providers"
 
     # ── Fallback: MOCK_PROVIDERS ───────────────────────────────────────────────
-    if not raw_dicts:
+    if not merged_dicts:
         logs.append(log_agent(
             booking_id=booking_id,
             agent="Provider Discovery Agent",
-            action="Google returned no results — using mock fallback",
+            action="No results from any source — using mock fallback",
             status="processing",
-            reasoning="Google Places returned 0 results. Falling back to static mock providers.",
+            reasoning="Neither Firestore nor Google Places returned results. Falling back to static mock providers.",
         ))
-        raw_dicts = [p.model_dump() for p in MOCK_PROVIDERS
+        merged_dicts = [p.model_dump() for p in MOCK_PROVIDERS
                      if normalize_service(p.service).lower() == canonical_service.lower()]
         source = "mock fallback"
 
     # ── Convert raw dicts → Provider objects + attach distances ───────────────
     matched: List[Provider] = []
-    for raw in raw_dicts:
+    for raw in merged_dicts:
         try:
             p = Provider(**raw) if isinstance(raw, dict) else raw
             distance = get_distance_km(user_lat, user_lon, p.latitude, p.longitude)
-            if distance <= 15.0:
+            
+            # Keep if within 50km, OR if it is a real registered provider (PROV-)
+            if distance <= 50.0 or p.provider_id.startswith("PROV-"):
                 matched.append(p.model_copy(update={"distance_km": distance}))
         except Exception as e:
             # Skip malformed entries without crashing the pipeline
@@ -168,7 +253,7 @@ def run_discovery_agent(booking_id: str, intent: IntentOutput) -> tuple[List[Pro
             agent="Provider Discovery Agent",
             action="No match found — widening to nearest providers",
             status="processing",
-            reasoning=f"No providers found within 15km for '{canonical_service}'. Returning nearest alternatives.",
+            reasoning=f"No providers found within 50km for '{canonical_service}'. Returning nearest alternatives.",
         ))
         all_with_dist = [
             p.model_copy(update={"distance_km": get_distance_km(user_lat, user_lon, p.latitude, p.longitude)})

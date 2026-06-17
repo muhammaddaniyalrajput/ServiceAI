@@ -187,3 +187,67 @@ async def get_agent_logs(booking_id: str) -> AgentTraceResponse:
     )
     _agent_logs_cache.set(booking_id, response)
     return response
+
+
+@router.get("/booking-tracking/{booking_id}", summary="Get live provider tracking data")
+async def get_booking_tracking(booking_id: str):
+    """
+    Returns real-time tracking data for a booking:
+    status, provider live coordinates, user coordinates, and ETA.
+    Used by the mobile app's live map tracking screen.
+    """
+    data = await asyncio.to_thread(db.get_booking_tracking, booking_id)
+    if not data:
+        raise HTTPException(status_code=404, detail=f"Booking '{booking_id}' not found.")
+    return data
+
+
+from pydantic import BaseModel
+class ChatMessageRequest(BaseModel):
+    sender: str
+    text: str
+
+@router.post("/{booking_id}/chat", summary="Send a chat message for a booking")
+async def send_chat_message(booking_id: str, payload: ChatMessageRequest):
+    """
+    Append a chat message to the booking's chat history.
+    """
+    try:
+        updated = await asyncio.to_thread(db.add_chat_message, booking_id, payload.sender, payload.text)
+        if not updated:
+            raise HTTPException(status_code=404, detail="Booking not found or update failed")
+        return {"success": True, "chat_messages": updated.get("chat_messages", [])}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+class ConfirmBookingRequest(BaseModel):
+    scheduled_time: str
+
+@router.post("/{booking_id}/confirm", summary="Confirm a booking after negotiation")
+async def confirm_negotiated_booking(booking_id: str, payload: ConfirmBookingRequest):
+    """
+    Finalize the booking status to 'confirmed' with an agreed upon scheduled_time.
+    """
+    try:
+        booking = await asyncio.to_thread(db.get_booking, booking_id)
+        if not booking:
+            raise HTTPException(status_code=404, detail="Booking not found")
+            
+        updates = {
+            "status": "confirmed",
+            "scheduled_time": payload.scheduled_time
+        }
+        
+        # update directly in db
+        db_instance = db._get_db()
+        if db_instance:
+            db_instance.collection("bookings").document(booking_id).update(updates)
+        else:
+            if booking_id in db._mock_store:
+                db._mock_store[booking_id].update(updates)
+                
+        return {"success": True, "status": "confirmed", "scheduled_time": payload.scheduled_time}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+

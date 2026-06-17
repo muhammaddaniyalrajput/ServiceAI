@@ -144,6 +144,14 @@ const ProviderCard: React.FC<{
             <Text style={styles.pillText}>{item.experience_yrs}yr exp</Text>
           </View>
         )}
+        {(item.address || item.city) && (
+          <View style={styles.pill}>
+            <Text style={styles.pillIcon}>🏠</Text>
+            <Text style={styles.pillText} numberOfLines={1}>
+              {item.address}{item.address && item.city ? ', ' : ''}{item.city}
+            </Text>
+          </View>
+        )}
       </View>
 
       {/* Book button */}

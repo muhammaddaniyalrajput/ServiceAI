@@ -243,3 +243,22 @@ export async function getAgentLogs(bookingId: string) {
     throw mapError(error);
   }
 }
+
+export async function getBookingTracking(bookingId: string) {
+  try {
+    const response = await apiClient.get(`/booking-tracking/${bookingId}`);
+    return response.data;
+  } catch (error) {
+    throw mapError(error);
+  }
+}
+
+export async function sendChatMessage(bookingId: string, sender: string, text: string) {
+  try {
+    const response = await apiClient.post(`/${bookingId}/chat`, { sender, text });
+    return response.data;
+  } catch (error) {
+    throw mapError(error);
+  }
+}
+

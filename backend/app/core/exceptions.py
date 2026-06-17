@@ -116,3 +116,11 @@ async def generic_exception_handler(request: Request, exc: Exception):
             "request_id": request_id,
         },
     )
+
+# ── Custom Validation Exception Class ────────────────────────────────────────
+# Yeh class aapki provider.py ya kisi bhi aur file mein manually error raise karne ke kaam aayegi
+
+class ValidationException(HTTPException):
+    def __init__(self, detail: str = "Validation failed — please check your input."):
+        # 422 Unprocessable Entity status code ke sath HTTPException ko call karein
+        super().__init__(status_code=422, detail=detail)
