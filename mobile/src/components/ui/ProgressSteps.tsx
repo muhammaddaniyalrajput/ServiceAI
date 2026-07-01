@@ -39,7 +39,7 @@ export const ProgressSteps: React.FC<ProgressStepsProps> = ({
               style={[
                 styles.dot,
                 isCompleted && { backgroundColor: color, borderColor: color },
-                isCurrent && { shadowColor: color },
+                isCurrent && { boxShadow: `0 0 6px ${color}` },
               ]}
             >
               {step.glyph ? (
@@ -109,9 +109,7 @@ const styles = StyleSheet.create<Style>({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 6,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 6,
+    boxShadow: '0 0 6px rgba(0,0,0,0.5)',
     elevation: 4,
   },
   glyph: {

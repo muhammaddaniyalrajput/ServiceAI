@@ -18,6 +18,7 @@ import {
   Animated,
   StatusBar,
 } from 'react-native';
+import { useNativeDriver } from '../utils/animation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -52,8 +53,8 @@ const DetailRow: React.FC<{
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(slideAnim,   { toValue: 0, duration: 360, delay: 600 + index * 80, useNativeDriver: true }),
-      Animated.timing(opacityAnim, { toValue: 1, duration: 360, delay: 600 + index * 80, useNativeDriver: true }),
+      Animated.timing(slideAnim,   { toValue: 0, duration: 360, delay: 600 + index * 80, useNativeDriver }),
+      Animated.timing(opacityAnim, { toValue: 1, duration: 360, delay: 600 + index * 80, useNativeDriver }),
     ]).start();
   }, [opacityAnim, slideAnim]);
 
@@ -97,24 +98,24 @@ export default function BookingSuccessScreen() {
   useEffect(() => {
     Animated.sequence([
       Animated.parallel([
-        Animated.spring(iconScale,   { toValue: 1, useNativeDriver: true, damping: 10, stiffness: 100 }),
-        Animated.timing(iconOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
-        Animated.spring(ringScale,   { toValue: 1, useNativeDriver: true, damping: 12, stiffness: 80 }),
-        Animated.timing(ringOpacity, { toValue: 0.25, duration: 400, useNativeDriver: true }),
+        Animated.spring(iconScale,   { toValue: 1, useNativeDriver, damping: 10, stiffness: 100 }),
+        Animated.timing(iconOpacity, { toValue: 1, duration: 300, useNativeDriver }),
+        Animated.spring(ringScale,   { toValue: 1, useNativeDriver, damping: 12, stiffness: 80 }),
+        Animated.timing(ringOpacity, { toValue: 0.25, duration: 400, useNativeDriver }),
       ]),
       Animated.parallel([
-        Animated.timing(titleOpacity, { toValue: 1, duration: 320, useNativeDriver: true }),
-        Animated.timing(titleSlide,   { toValue: 0, duration: 320, useNativeDriver: true }),
+        Animated.timing(titleOpacity, { toValue: 1, duration: 320, useNativeDriver }),
+        Animated.timing(titleSlide,   { toValue: 0, duration: 320, useNativeDriver }),
       ]),
       Animated.parallel([
-        Animated.timing(cardOpacity, { toValue: 1, duration: 340, useNativeDriver: true }),
-        Animated.timing(cardSlide,   { toValue: 0, duration: 340, useNativeDriver: true }),
+        Animated.timing(cardOpacity, { toValue: 1, duration: 340, useNativeDriver }),
+        Animated.timing(cardSlide,   { toValue: 0, duration: 340, useNativeDriver }),
       ]),
     ]).start(() => {
       Animated.loop(
         Animated.sequence([
-          Animated.timing(pulseScale, { toValue: 1.12, duration: 1200, useNativeDriver: true }),
-          Animated.timing(pulseScale, { toValue: 1,    duration: 1200, useNativeDriver: true }),
+          Animated.timing(pulseScale, { toValue: 1.12, duration: 1200, useNativeDriver }),
+          Animated.timing(pulseScale, { toValue: 1,    duration: 1200, useNativeDriver }),
         ]),
       ).start();
     });
@@ -330,8 +331,7 @@ const styles = StyleSheet.create({
     width: 80, height: 80, borderRadius: 40,
     backgroundColor: AppColors.success,
     alignItems: 'center', justifyContent: 'center',
-    shadowColor: AppColors.success, shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.6, shadowRadius: 20, elevation: 12,
+    boxShadow: '0 8px 20px rgba(16,185,129,0.6)', elevation: 12,
   },
   iconEmoji: { color: '#fff', fontSize: 36, fontWeight: '900' as const },
 

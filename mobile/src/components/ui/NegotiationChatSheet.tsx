@@ -25,7 +25,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
+  Pressable,
   View,
   Keyboard,
 } from 'react-native';
@@ -45,6 +45,7 @@ import {
   Radius,
   Spacing,
 } from '../../constants/theme';
+import { useNativeDriver } from '../../utils/animation';
 
 interface NegotiationChatSheetProps {
   visible: boolean;
@@ -88,7 +89,7 @@ export default function NegotiationChatSheet({
     Animated.timing(sheetAnim, {
       toValue: visible ? 1 : 0,
       duration: visible ? 260 : 200,
-      useNativeDriver: true,
+      useNativeDriver,
     }).start();
   }, [visible, sheetAnim]);
 
@@ -170,7 +171,7 @@ export default function NegotiationChatSheet({
     }
 
     try {
-      await apiSendChatMessage(bookingId, text, 'customer');
+      await apiSendChatMessage(bookingId, currentUserId, text, 'customer');
       Keyboard.dismiss();
     } catch (err) {
       const message =
@@ -200,9 +201,9 @@ export default function NegotiationChatSheet({
       onRequestClose={onClose}
     >
       <View style={styles.backdrop}>
-        <TouchableWithoutFeedback onPress={onClose}>
-          <View style={styles.backdropTouch} />
-        </TouchableWithoutFeedback>
+        <Pressable onPress={onClose} style={styles.backdropTouch}>
+          {({ pressed }) => <View style={[styles.backdropTouch, pressed && { opacity: 0 }]} />}
+        </Pressable>
 
         <Animated.View
           style={[

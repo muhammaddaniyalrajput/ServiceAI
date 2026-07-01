@@ -23,6 +23,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
+import { useNativeDriver } from '../utils/animation';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as Location from 'expo-location';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
@@ -66,16 +67,16 @@ const PulseRing: React.FC = () => {
   useEffect(() => {
     const ring1 = Animated.loop(
       Animated.parallel([
-        Animated.timing(pulse1, { toValue: 2.2, duration: 1600, useNativeDriver: true }),
-        Animated.timing(op1,    { toValue: 0,   duration: 1600, useNativeDriver: true }),
+        Animated.timing(pulse1, { toValue: 2.2, duration: 1600, useNativeDriver }),
+        Animated.timing(op1,    { toValue: 0,   duration: 1600, useNativeDriver }),
       ]),
     );
     const ring2 = Animated.loop(
       Animated.sequence([
         Animated.delay(600),
         Animated.parallel([
-          Animated.timing(pulse2, { toValue: 2.2, duration: 1600, useNativeDriver: true }),
-          Animated.timing(op2,    { toValue: 0,   duration: 1600, useNativeDriver: true }),
+          Animated.timing(pulse2, { toValue: 2.2, duration: 1600, useNativeDriver }),
+          Animated.timing(op2,    { toValue: 0,   duration: 1600, useNativeDriver }),
         ]),
       ]),
     );
@@ -85,7 +86,7 @@ const PulseRing: React.FC = () => {
   }, []);
 
   return (
-    <View style={pulseStyles.container} pointerEvents="none">
+    <View style={[pulseStyles.container, { pointerEvents: 'none' }]}>
       <Animated.View style={[pulseStyles.ring, { transform: [{ scale: pulse1 }], opacity: op1 }]} />
       <Animated.View style={[pulseStyles.ring, { transform: [{ scale: pulse2 }], opacity: op2 }]} />
     </View>
@@ -130,8 +131,8 @@ export default function LocationProfileScreen({ route, navigation }: Props) {
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(headerOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
-      Animated.timing(headerSlide,   { toValue: 0, duration: 400, useNativeDriver: true }),
+      Animated.timing(headerOpacity, { toValue: 1, duration: 400, useNativeDriver }),
+      Animated.timing(headerSlide,   { toValue: 0, duration: 400, useNativeDriver }),
     ]).start();
   }, []);
 
@@ -169,10 +170,10 @@ export default function LocationProfileScreen({ route, navigation }: Props) {
   useEffect(() => {
     if (coords) {
       Animated.parallel([
-        Animated.spring(coordsScale,   { toValue: 1, useNativeDriver: true, damping: 14, stiffness: 140 }),
-        Animated.timing(coordsOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
-        Animated.timing(fieldsOpacity, { toValue: 1, duration: 380, useNativeDriver: true }),
-        Animated.timing(fieldsSlide,   { toValue: 0, duration: 380, useNativeDriver: true }),
+        Animated.spring(coordsScale,   { toValue: 1, useNativeDriver, damping: 14, stiffness: 140 }),
+        Animated.timing(coordsOpacity, { toValue: 1, duration: 300, useNativeDriver }),
+        Animated.timing(fieldsOpacity, { toValue: 1, duration: 380, useNativeDriver }),
+        Animated.timing(fieldsSlide,   { toValue: 0, duration: 380, useNativeDriver }),
       ]).start();
     }
   }, [coords]);

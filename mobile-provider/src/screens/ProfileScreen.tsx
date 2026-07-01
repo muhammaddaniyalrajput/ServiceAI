@@ -135,14 +135,14 @@ export default function ProfileScreen() {
         style: 'destructive',
         onPress: async () => {
           setLoading(true);
+          logout();
+          router.replace('/auth/login');
           try {
             if (auth) {
               await signOut(auth);
             }
-            logout();
-            router.replace('/auth/login');
-          } catch (err: any) {
-            Alert.alert('Error', err.message || 'Failed to sign out');
+          } catch {
+            // Firebase sign-out failed but local state is already cleared
           } finally {
             setLoading(false);
           }

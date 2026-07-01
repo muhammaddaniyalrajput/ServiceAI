@@ -25,6 +25,7 @@ import {
 } from 'react-native';
 import { ProviderJob } from '@/services/providerAPI';
 import { providerAPI } from '@/services/providerAPI';
+import { useNativeDriver } from '@/utils/animation';
 
 interface JobRequestModalProps {
   visible: boolean;
@@ -47,7 +48,7 @@ export const JobRequestModal: React.FC<JobRequestModalProps> = ({
       // Slide in from bottom
       Animated.spring(slideAnim, {
         toValue: 1,
-        useNativeDriver: true,
+        useNativeDriver,
       }).start();
     } else {
       slideAnim.setValue(0);

@@ -30,7 +30,6 @@ Notifications.setNotificationHandler({
  */
 export const getPushTokenAsync = async (): Promise<string | null> => {
   if (Platform.OS === 'web') {
-    console.warn('Push tokens are not supported on web client.');
     return null;
   }
 

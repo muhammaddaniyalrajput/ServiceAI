@@ -22,6 +22,7 @@ import {
   TouchableOpacity,
   TextInput,
 } from 'react-native';
+import { useNativeDriver } from '../utils/animation';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app';
@@ -101,12 +102,12 @@ export default function SignupScreen({ navigation }: Props) {
   useEffect(() => {
     Animated.stagger(100, [
       Animated.parallel([
-        Animated.timing(headerOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
-        Animated.timing(headerSlide,   { toValue: 0, duration: 400, useNativeDriver: true }),
+        Animated.timing(headerOpacity, { toValue: 1, duration: 400, useNativeDriver }),
+        Animated.timing(headerSlide,   { toValue: 0, duration: 400, useNativeDriver }),
       ]),
       Animated.parallel([
-        Animated.timing(cardOpacity, { toValue: 1, duration: 420, useNativeDriver: true }),
-        Animated.timing(cardSlide,   { toValue: 0, duration: 420, useNativeDriver: true }),
+        Animated.timing(cardOpacity, { toValue: 1, duration: 420, useNativeDriver }),
+        Animated.timing(cardSlide,   { toValue: 0, duration: 420, useNativeDriver }),
       ]),
     ]).start();
   }, []);

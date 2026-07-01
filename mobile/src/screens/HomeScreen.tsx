@@ -23,6 +23,7 @@ import {
   StyleSheet,
   StatusBar,
 } from 'react-native';
+import { useNativeDriver } from '../utils/animation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -100,8 +101,8 @@ const SkeletonBar: React.FC<{ width: number | `${number}%`; height?: number; mar
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(shimmer, { toValue: 1, duration: 900, useNativeDriver: true }),
-        Animated.timing(shimmer, { toValue: 0, duration: 900, useNativeDriver: true }),
+        Animated.timing(shimmer, { toValue: 1, duration: 900, useNativeDriver }),
+        Animated.timing(shimmer, { toValue: 0, duration: 900, useNativeDriver }),
       ]),
     ).start();
   }, []);
@@ -137,8 +138,8 @@ export default function HomeScreen() {
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(barSlide,   { toValue: 0, duration: 450, useNativeDriver: true }),
-      Animated.timing(barOpacity, { toValue: 1, duration: 450, useNativeDriver: true }),
+      Animated.timing(barSlide,   { toValue: 0, duration: 450, useNativeDriver }),
+      Animated.timing(barOpacity, { toValue: 1, duration: 450, useNativeDriver }),
     ]).start();
   }, []);
 
@@ -438,8 +439,7 @@ const styles = StyleSheet.create({
     borderRadius: 14, paddingVertical: 15,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     marginBottom: 10,
-    shadowColor: '#6366f1', shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35, shadowRadius: 16, elevation: 8,
+    boxShadow: '0 8px 16px rgba(99,102,241,0.35)', elevation: 8,
   },
   ctaText:  { color: '#fff', fontSize: 15, fontWeight: '800' },
   ctaArrow: { color: '#fff', fontSize: 18, fontWeight: '800' },
@@ -478,9 +478,8 @@ const styles = StyleSheet.create({
   sendBtn: {
     backgroundColor: '#6366f1', borderRadius: 12,
     width: 44, height: 44, alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#6366f1', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35, shadowRadius: 10, elevation: 6,
+    boxShadow: '0 4px 10px rgba(99,102,241,0.35)', elevation: 6,
   },
-  sendBtnDisabled: { backgroundColor: 'rgba(99,102,241,0.3)', shadowOpacity: 0, elevation: 0 },
+  sendBtnDisabled: { backgroundColor: 'rgba(99,102,241,0.3)', boxShadow: 'none', elevation: 0 },
   sendBtnText: { color: '#fff', fontSize: 18, fontWeight: '800' },
 });

@@ -150,7 +150,7 @@ export const Typography = {
 } as const;
 
 export const Shadow = {
-  sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 },  shadowOpacity: 0.12, shadowRadius: 2,  elevation: 1 },
-  md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 },  shadowOpacity: 0.20, shadowRadius: 8,  elevation: 4 },
-  lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 },  shadowOpacity: 0.28, shadowRadius: 16, elevation: 8 },
+  sm: { boxShadow: '0 1px 2px rgba(0,0,0,0.12)',  elevation: 1 },
+  md: { boxShadow: '0 4px 8px rgba(0,0,0,0.20)',  elevation: 4 },
+  lg: { boxShadow: '0 8px 16px rgba(0,0,0,0.28)', elevation: 8 },
 } as const;

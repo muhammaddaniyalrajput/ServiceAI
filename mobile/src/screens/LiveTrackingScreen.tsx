@@ -22,6 +22,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
 } from 'react-native';
+import { useNativeDriver } from '../utils/animation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { Marker, PROVIDER_GOOGLE } from '../components/MapViewWrapper';
 import { useRoute } from '@react-navigation/native';
@@ -94,8 +95,8 @@ export default function LiveTrackingScreen() {
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
-      Animated.timing(slideAnim, { toValue: 0, duration: 500, useNativeDriver: true }),
+      Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver }),
+      Animated.timing(slideAnim, { toValue: 0, duration: 500, useNativeDriver }),
     ]).start();
   }, []);
 
@@ -232,7 +233,7 @@ export default function LiveTrackingScreen() {
             <Text style={styles.sectionLabel}>LIVE TRACKING</Text>
             <StatusBadge status={statusKey} size="sm" />
           </View>
-          <View style={styles.mapWrapper} pointerEvents="box-none">
+          <View style={[styles.mapWrapper, { pointerEvents: 'box-none' }]}>
             <MapView
               style={styles.map}
               provider={PROVIDER_GOOGLE}
@@ -399,10 +400,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
-    shadowColor: '#000',
-    shadowOpacity: 0.24,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
+    boxShadow: '0 8px 16px rgba(0,0,0,0.24)',
     elevation: 8,
   },
   chatFabIcon: { fontSize: 15 },

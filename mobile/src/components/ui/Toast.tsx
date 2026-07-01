@@ -16,6 +16,7 @@ import {
   View,
   TouchableOpacity,
 } from 'react-native';
+import { useNativeDriver } from '../../utils/animation';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -67,14 +68,14 @@ export function useToast() {
       Animated.parallel([
         Animated.spring(translateY, {
           toValue: 0,
-          useNativeDriver: true,
+          useNativeDriver,
           damping: 18,
           stiffness: 160,
         }),
         Animated.timing(opacity, {
           toValue: 1,
           duration: 200,
-          useNativeDriver: true,
+          useNativeDriver,
         }),
       ]).start();
 
@@ -84,12 +85,12 @@ export function useToast() {
           Animated.timing(translateY, {
             toValue: -120,
             duration: 280,
-            useNativeDriver: true,
+            useNativeDriver,
           }),
           Animated.timing(opacity, {
             toValue: 0,
             duration: 280,
-            useNativeDriver: true,
+            useNativeDriver,
           }),
         ]).start(() => setToast((p) => ({ ...p, visible: false })));
       }, duration);
@@ -100,8 +101,8 @@ export function useToast() {
   const hideToast = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
     Animated.parallel([
-      Animated.timing(translateY, { toValue: -120, duration: 250, useNativeDriver: true }),
-      Animated.timing(opacity, { toValue: 0, duration: 250, useNativeDriver: true }),
+      Animated.timing(translateY, { toValue: -120, duration: 250, useNativeDriver }),
+      Animated.timing(opacity, { toValue: 0, duration: 250, useNativeDriver }),
     ]).start(() => setToast((p) => ({ ...p, visible: false })));
   }, []);
 
@@ -119,9 +120,9 @@ export function useToast() {
             borderColor: cfg.border,
             transform: [{ translateY }],
             opacity,
+            pointerEvents: 'box-none',
           },
         ]}
-        pointerEvents="box-none"
       >
         <View style={styles.row}>
           <View style={[styles.iconBadge, { borderColor: cfg.border }]}>

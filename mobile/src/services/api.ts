@@ -27,12 +27,18 @@ export interface BookServicePayload {
 }
 
 /**
- * Chat message payload. The backend derives the sender UID from the Firebase
- * bearer token in the Authorization header (set by the request interceptor above)
- * — the client must NOT claim a UID it does not own. We only declare the
- * `sender_type` (which side of the chat is sending) and the `text`.
+ * Chat message payload.
+ *
+ * The backend Pydantic model `ChatMessageRequest` requires three fields:
+ *   - `sender`:       the caller's UID (the server validates the bearer token
+ *                     matches this UID before persisting)
+ *   - `text`:         the message body
+ *   - `sender_type`:  'customer' | 'provider' | 'system' (default: 'system')
+ *
+ * Missing the `sender` field surfaces as HTTP 422 "Field required".
  */
 export interface ChatMessagePayload {
+  sender: string;
   sender_type: 'customer' | 'provider' | 'system';
   text: string;
 }
@@ -281,17 +287,39 @@ export async function getBookingTracking(bookingId: string) {
 /**
  * Send a chat message for a booking.
  *
- * The backend derives the sender UID from the Firebase bearer token in the
- * Authorization header. The body `sender_type` field identifies whether the
- * message originated from the customer, the provider, or the system.
+ * The backend validates the Firebase bearer token against the `sender` field
+ * (the server checks `decoded_uid == payload.sender`) and then writes the
+ * message to Firestore. `sender_type` identifies which side is sending
+ * ('customer', 'provider', or 'system'); the default is 'customer' for
+ * the customer app.
+ *
+ * @param sender   the caller's Firebase UID (from `auth.currentUser?.uid`)
+ * @param text     non-empty message text
+ * @param senderType  'customer' | 'provider' | 'system'
  */
 export async function sendChatMessage(
   bookingId: string,
+  sender: string,
   text: string,
   senderType: 'customer' | 'provider' | 'system' = 'customer',
 ) {
+  // Defensive guards — the backend will 422 if any of these are missing.
+  if (!bookingId) {
+    throw new Error('Booking id is required to send a chat message.');
+  }
+  if (!sender) {
+    throw new Error('You must be signed in to send a chat message.');
+  }
+  if (!text || !text.trim()) {
+    throw new Error('Message text cannot be empty.');
+  }
+
   try {
-    const payload: ChatMessagePayload = { sender_type: senderType, text };
+    const payload: ChatMessagePayload = {
+      sender,
+      sender_type: senderType,
+      text: text.trim(),
+    };
     const response = await apiClient.post(`/${bookingId}/chat`, payload);
     return response.data;
   } catch (error) {

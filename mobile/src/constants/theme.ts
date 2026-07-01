@@ -116,9 +116,9 @@ export const Typography = {
 } as const;
 
 export const Shadow = {
-  sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 },  shadowOpacity: 0.10, shadowRadius: 2,  elevation: 1 },
-  md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 },  shadowOpacity: 0.18, shadowRadius: 8,  elevation: 4 },
-  lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 },  shadowOpacity: 0.24, shadowRadius: 16, elevation: 8 },
+  sm: { boxShadow: '0 1px 2px rgba(0,0,0,0.10)', elevation: 1 },
+  md: { boxShadow: '0 4px 8px rgba(0,0,0,0.18)', elevation: 4 },
+  lg: { boxShadow: '0 8px 16px rgba(0,0,0,0.24)', elevation: 8 },
 } as const;
 
 export const Fonts = Platform.select({

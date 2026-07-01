@@ -255,7 +255,11 @@ async def send_chat_message(
         )
         if not updated:
             raise HTTPException(status_code=404, detail="Booking not found or update failed")
-        return {"success": True, "chat_messages": updated.get("chat_messages", [])}
+        # The message is persisted as a new document in
+        # `bookings/{booking_id}/messages`. The frontend subscribes to that
+        # subcollection via `onSnapshot` and will receive the new message
+        # in real time. We no longer return the full chat array here.
+        return {"success": True, "booking_id": booking_id}
     except HTTPException:
         raise  # re-raise 404 not found as-is
     except Exception:

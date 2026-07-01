@@ -22,6 +22,7 @@ import {
   Modal,
   ScrollView,
 } from 'react-native';
+import { useNativeDriver } from '../utils/animation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   collection,
@@ -114,8 +115,8 @@ const SkeletonCard: React.FC = () => {
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(shimmer, { toValue: 1, duration: 900, useNativeDriver: true }),
-        Animated.timing(shimmer, { toValue: 0, duration: 900, useNativeDriver: true }),
+        Animated.timing(shimmer, { toValue: 1, duration: 900, useNativeDriver }),
+        Animated.timing(shimmer, { toValue: 0, duration: 900, useNativeDriver }),
       ]),
     ).start();
   }, [shimmer]);
@@ -146,8 +147,8 @@ const BookingCard: React.FC<{ item: Booking; index: number; onPress: () => void 
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(slide,   { toValue: 0, duration: 350, delay: index * 60, useNativeDriver: true }),
-      Animated.timing(opacity, { toValue: 1, duration: 350, delay: index * 60, useNativeDriver: true }),
+      Animated.timing(slide,   { toValue: 0, duration: 350, delay: index * 60, useNativeDriver }),
+      Animated.timing(opacity, { toValue: 1, duration: 350, delay: index * 60, useNativeDriver }),
     ]).start();
   }, [index, opacity, slide]);
 

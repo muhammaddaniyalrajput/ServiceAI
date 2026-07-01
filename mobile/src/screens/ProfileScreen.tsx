@@ -22,6 +22,7 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
+import { useNativeDriver } from '../utils/animation';
 import { doc, getDoc, updateDoc, collection, query, where, getCountFromServer } from 'firebase/firestore';
 import { signOut, updateEmail } from 'firebase/auth';
 import * as Location from 'expo-location';
@@ -102,8 +103,8 @@ export default function ProfileScreen() {
   useEffect(() => {
     if (!isLoading) {
       Animated.parallel([
-        Animated.timing(fadeAnim,  { toValue: 1, duration: 420, useNativeDriver: true }),
-        Animated.timing(slideAnim, { toValue: 0, duration: 420, useNativeDriver: true }),
+        Animated.timing(fadeAnim,  { toValue: 1, duration: 420, useNativeDriver }),
+        Animated.timing(slideAnim, { toValue: 0, duration: 420, useNativeDriver }),
       ]).start();
     }
   }, [isLoading]);
@@ -497,8 +498,7 @@ const styles = StyleSheet.create({
     width: 90, height: 90, borderRadius: 45,
     borderWidth: 2.5, borderColor: '#6366f1',
     padding: 3, alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#6366f1', shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.4, shadowRadius: 16, elevation: 8,
+    boxShadow: '0 0 16px rgba(99,102,241,0.4)', elevation: 8,
   },
   avatarCircle: {
     width: 76, height: 76, borderRadius: 38,

@@ -264,7 +264,7 @@ export default function ChatScreen() {
     }
 
     try {
-      await apiSendChatMessage(bookingId, text, 'customer');
+      await apiSendChatMessage(bookingId, currentUserId, text, 'customer');
       Keyboard.dismiss();
     } catch (err) {
       const message =

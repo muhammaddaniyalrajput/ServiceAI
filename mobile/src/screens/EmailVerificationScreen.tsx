@@ -21,6 +21,7 @@ import {
   StatusBar,
   Platform,
 } from 'react-native';
+import { useNativeDriver } from '../utils/animation';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { sendEmailVerification, signOut } from 'firebase/auth';
 import { auth } from '../firebase';
@@ -43,8 +44,8 @@ export default function EmailVerificationScreen({ navigation }: Props) {
   // Periodic status checking interval
   useEffect(() => {
     Animated.parallel([
-      Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, damping: 15, stiffness: 120 }),
-      Animated.timing(opacityAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
+      Animated.spring(scaleAnim, { toValue: 1, useNativeDriver, damping: 15, stiffness: 120 }),
+      Animated.timing(opacityAnim, { toValue: 1, duration: 400, useNativeDriver }),
     ]).start();
 
     // Auto-reload auth user state every 4 seconds to check verification status without clicking
@@ -206,10 +207,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: 'rgba(51,65,85,0.7)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
+    boxShadow: '0 10px 20px rgba(0,0,0,0.25)',
     elevation: 8,
   },
   iconCircle: {

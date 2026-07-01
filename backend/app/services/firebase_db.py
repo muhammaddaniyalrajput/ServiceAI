@@ -599,35 +599,86 @@ def respond_to_job(booking_id: str, action: str, provider_id: str = None) -> Opt
     return None
 
 
-def add_chat_message(booking_id: str, sender: str, text: str) -> Optional[dict]:
+def add_chat_message(
+    booking_id: str,
+    sender: str,
+    text: str,
+    sender_type: str = "system",
+) -> Optional[dict]:
     """
-    Appends a message to the chat_messages array in the booking document.
+    Appends a chat message to the booking's ``messages`` subcollection.
+
+    The frontend (both the customer and the provider apps) subscribes to
+    ``bookings/{booking_id}/messages`` ordered by ``createdAt desc`` via a
+    Firestore ``onSnapshot`` listener. We therefore write each chat message
+    as its own document in that subcollection, not as an entry in an array
+    on the parent booking document (that array path is no longer used).
+
+    Document shape (matches what the frontend reads):
+        {
+            "text":       str,
+            "senderId":   str,   # caller's Firebase UID
+            "senderType": 'customer' | 'provider' | 'system',
+            "createdAt":  Firestore SERVER_TIMESTAMP,
+        }
+
+    Parameters
+    ----------
+    booking_id : str
+        Firestore document id of the booking.
+    sender : str
+        The caller's UID (the server validates this against the bearer token
+        upstream — this function trusts whatever it is given).
+    text : str
+        The message body.
+    sender_type : str, optional
+        Which side of the conversation is sending the message
+        ('customer' | 'provider' | 'system'). Persisted on each message so
+        the client can render bubbles on the correct side of the screen.
+        Defaults to 'system' for backward compatibility.
     """
     from datetime import datetime, timezone
     import firebase_admin
     from firebase_admin import firestore
-    
-    _now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    msg = {
-        "sender": sender,
-        "text": text,
-        "timestamp": _now,
-    }
-    
+
+    # Normalize the type — anything unexpected is treated as 'system' so
+    # the bubble renderer never receives an unknown value.
+    normalized_type = sender_type if sender_type in ("customer", "provider", "system") else "system"
+
     db = _get_db()
     if db:
         booking_ref = db.collection("bookings").document(booking_id)
-        booking_ref.update({
-            "chat_messages": firestore.ArrayUnion([msg]),
-            "updated_at": _now,
-        })
-        return booking_ref.get().to_dict()
+        messages_ref = booking_ref.collection("messages")
+        _now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        # Use SERVER_TIMESTAMP for the canonical createdAt so all clients
+        # see a consistent ordering even if their local clocks drift.
+        # We still write `_now_iso` to `clientTime` for offline debugging.
+        msg = {
+            "text": text,
+            "senderId": sender,
+            "senderType": normalized_type,
+            "createdAt": firestore.SERVER_TIMESTAMP,
+            "clientTime": _now_iso,
+        }
+        messages_ref.add(msg)
+        # Bump the parent booking's updated_at so dashboards re-sort.
+        booking_ref.update({"updated_at": _now_iso})
+        return {"success": True, "booking_id": booking_id}
     else:
+        # Mock-store fallback (used when Firebase Admin isn't initialized)
         if booking_id in _mock_store:
-            if "chat_messages" not in _mock_store[booking_id]:
-                _mock_store[booking_id]["chat_messages"] = []
-            _mock_store[booking_id]["chat_messages"].append(msg)
-            return _mock_store[booking_id]
+            if "messages" not in _mock_store[booking_id]:
+                _mock_store[booking_id]["messages"] = []
+            _now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            _mock_store[booking_id]["messages"].append({
+                "text": text,
+                "senderId": sender,
+                "senderType": normalized_type,
+                "createdAt": _now_iso,
+                "clientTime": _now_iso,
+            })
+            _mock_store[booking_id]["updated_at"] = _now_iso
+            return {"success": True, "booking_id": booking_id}
     return None
 
 

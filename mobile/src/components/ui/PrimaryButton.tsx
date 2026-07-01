@@ -5,13 +5,14 @@
  */
 import React, { useRef } from 'react';
 import {
-  TouchableWithoutFeedback,
   Animated,
   ActivityIndicator,
   Text,
   StyleSheet,
   View,
   ViewStyle,
+  Platform,
+  Pressable,
 } from 'react-native';
 
 interface PrimaryButtonProps {
@@ -42,10 +43,15 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
 }) => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
+  // Native driver is not supported on web (the native animated module is
+  // missing) — falling back to the JS driver produces a console warning.
+  // Use a single, centralized flag so the warning only fires once.
+  const useNativeDriver = Platform.OS !== 'web';
+
   const handlePressIn = () => {
     Animated.spring(scaleAnim, {
       toValue: 0.96,
-      useNativeDriver: true,
+      useNativeDriver,
       speed: 40,
       bounciness: 4,
     }).start();
@@ -54,7 +60,7 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
   const handlePressOut = () => {
     Animated.spring(scaleAnim, {
       toValue: 1,
-      useNativeDriver: true,
+      useNativeDriver,
       speed: 40,
       bounciness: 4,
     }).start();
@@ -63,7 +69,7 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
   const isDisabled = disabled || isLoading;
 
   return (
-    <TouchableWithoutFeedback
+    <Pressable
       onPress={onPress}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
@@ -72,31 +78,34 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
       accessibilityLabel={label}
       accessibilityState={{ disabled: isDisabled }}
     >
-      <Animated.View
-        style={[
-          styles.button,
-          { backgroundColor: isDisabled ? disabledColor : color },
-          { transform: [{ scale: scaleAnim }] },
-          style,
-        ]}
-      >
-        {isLoading ? (
-          <View style={styles.row}>
-            <ActivityIndicator color="#fff" size="small" />
-            <Text style={styles.label}>{loadingLabel ?? label}</Text>
-          </View>
-        ) : (
-          <View style={styles.row}>
-            <Text style={[styles.label, isDisabled && styles.labelDisabled]}>
-              {label}
-            </Text>
-            {showArrow && (
-              <Text style={[styles.arrow, isDisabled && styles.labelDisabled]}>→</Text>
-            )}
-          </View>
-        )}
-      </Animated.View>
-    </TouchableWithoutFeedback>
+      {({ pressed }) => (
+        <Animated.View
+          style={[
+            styles.button,
+            { backgroundColor: isDisabled ? disabledColor : color },
+            { transform: [{ scale: pressed && !isDisabled ? scaleAnim : 1 }] },
+            pressed && !isDisabled && styles.buttonPressed,
+            style,
+          ]}
+        >
+          {isLoading ? (
+            <View style={styles.row}>
+              <ActivityIndicator color="#fff" size="small" />
+              <Text style={styles.label}>{loadingLabel ?? label}</Text>
+            </View>
+          ) : (
+            <View style={styles.row}>
+              <Text style={[styles.label, isDisabled && styles.labelDisabled]}>
+                {label}
+              </Text>
+              {showArrow && (
+                <Text style={[styles.arrow, isDisabled && styles.labelDisabled]}>→</Text>
+              )}
+            </View>
+          )}
+        </Animated.View>
+      )}
+    </Pressable>
   );
 };
 
@@ -108,6 +117,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
+  },
+  buttonPressed: {
+    opacity: 0.9,
   },
   row: {
     flexDirection: 'row',

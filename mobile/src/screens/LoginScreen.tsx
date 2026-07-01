@@ -21,6 +21,7 @@ import {
   StyleSheet,
   TextInput,
 } from 'react-native';
+import { useNativeDriver } from '../utils/animation';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app';
@@ -81,12 +82,12 @@ export default function LoginScreen({ navigation }: Props) {
   useEffect(() => {
     Animated.stagger(120, [
       Animated.parallel([
-        Animated.spring(logoScale, { toValue: 1, useNativeDriver: true, damping: 14, stiffness: 120 }),
-        Animated.timing(logoOpacity, { toValue: 1, duration: 350, useNativeDriver: true }),
+        Animated.spring(logoScale, { toValue: 1, useNativeDriver, damping: 14, stiffness: 120 }),
+        Animated.timing(logoOpacity, { toValue: 1, duration: 350, useNativeDriver }),
       ]),
       Animated.parallel([
-        Animated.timing(formSlide, { toValue: 0, duration: 380, useNativeDriver: true }),
-        Animated.timing(formOpacity, { toValue: 1, duration: 380, useNativeDriver: true }),
+        Animated.timing(formSlide, { toValue: 0, duration: 380, useNativeDriver }),
+        Animated.timing(formOpacity, { toValue: 1, duration: 380, useNativeDriver }),
       ]),
     ]).start();
   }, []);
@@ -264,10 +265,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#6366f1',
     alignItems: 'center', justifyContent: 'center',
     marginBottom: 20,
-    shadowColor: '#6366f1',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.45,
-    shadowRadius: 16,
+    boxShadow: '0 8px 16px rgba(99,102,241,0.45)',
     elevation: 12,
   },
   logoLetter: { color: '#fff', fontSize: 26, fontWeight: '900' },

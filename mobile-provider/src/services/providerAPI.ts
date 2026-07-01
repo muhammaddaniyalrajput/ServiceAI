@@ -367,19 +367,37 @@ class ProviderAPIService {
 
   /**
    * 8. POST /{booking_id}/chat
-   * Send a negotiation chat message. The sender UID is derived server-side
-   * from the Firebase bearer token — the client does not (and must not) claim
-   * a UID it does not own.
+   *
+   * Send a negotiation chat message. The backend Pydantic model
+   * (`ChatMessageRequest` in `backend/app/api/v1/bookings.py`) requires three
+   * fields:
+   *   - `sender`:      the caller's Firebase UID — the server validates this
+   *                    against the bearer token in the Authorization header.
+   *   - `text`:        the message body
+   *   - `sender_type`: 'customer' | 'provider' | 'system'
+   *
+   * Missing the `sender` field returns HTTP 422 "Field required".
    */
   async sendChatMessage(
     booking_id: string,
+    sender: string,
     text: string,
     sender_type: 'customer' | 'provider' | 'system' = 'provider'
   ): Promise<any> {
+    if (!booking_id) {
+      throw new APIError('Booking id is required to send a chat message.');
+    }
+    if (!sender) {
+      throw new APIError('You must be signed in to send a chat message.');
+    }
+    if (!text || !text.trim()) {
+      throw new APIError('Message text cannot be empty.');
+    }
+
     try {
       const response = await this.axiosInstance.post(
         `/${booking_id}/chat`,
-        { sender_type, text }
+        { sender, sender_type, text: text.trim() }
       );
       return response.data;
     } catch (error: any) {

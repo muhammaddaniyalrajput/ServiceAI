@@ -13,7 +13,7 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/firebase';
 import { useProviderStore } from '@/store/providerStore';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, View, Platform } from 'react-native';
 import { getPushTokenAsync } from '@/services/pushNotifications';
 import { providerAPI } from '@/services/providerAPI';
 
@@ -34,7 +34,8 @@ function RootLayoutNav() {
   const providerId = useProviderStore((s) => s.providerId);
 
   useEffect(() => {
-    // Setup FCM token on app start
+    if (Platform.OS === 'web') return;
+    // Setup FCM token on app start (native only)
     const setupFCM = async () => {
       try {
         const token = await getPushTokenAsync();

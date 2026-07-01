@@ -28,7 +28,9 @@ export interface StatusBadgeProps {
   style?: ViewStyle;
 }
 
-const STATUS_TO_STATE: Record<StatusKey, keyof typeof AppColors.state> = {
+const UNKNOWN_TOKEN: keyof typeof AppColors.state = 'neutral';
+
+const TOKEN_MAP: Record<string, keyof typeof AppColors.state> = {
   pending:            'warning',
   pending_acceptance: 'warning',
   accepted:           'info',
@@ -42,7 +44,7 @@ const STATUS_TO_STATE: Record<StatusKey, keyof typeof AppColors.state> = {
   rejected:           'danger',
 };
 
-const STATUS_LABEL: Record<StatusKey, string> = {
+const LABEL_MAP: Record<string, string> = {
   pending:            'Pending',
   pending_acceptance: 'Awaiting',
   accepted:           'Accepted',
@@ -62,10 +64,16 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
   label,
   style,
 }) => {
-  const stateKey = STATUS_TO_STATE[status];
-  const token = AppColors.state[stateKey];
+  // Defensive lookups: if `status` is unknown (e.g. 'searching', 'ranking',
+  // 'broadcasting' or `undefined` from a race during initial Firestore load),
+  // fall back to the neutral token. If even the token map is missing,
+  // fall back to a hard-coded slate-grey token so the component never crashes.
+  const FALLBACK_TOKEN = { bg: 'rgba(148,163,184,0.10)', text: '#cbd5e1', border: 'rgba(148,163,184,0.30)' };
+  const stateKey = (TOKEN_MAP[status] ?? UNKNOWN_TOKEN) as keyof typeof AppColors.state;
+  const token = AppColors?.state?.[stateKey] ?? FALLBACK_TOKEN;
   const sizeStyles = size === 'sm' ? styles.sizeSm : styles.sizeMd;
   const textSize = size === 'sm' ? styles.textSm : styles.textMd;
+  const displayLabel = label ?? LABEL_MAP[status] ?? status ?? '—';
 
   return (
     <View
@@ -76,10 +84,10 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
         style,
       ]}
       accessibilityRole="text"
-      accessibilityLabel={label ?? STATUS_LABEL[status]}
+      accessibilityLabel={displayLabel}
     >
-      <Text style={[textSize, { color: token.text }]}>
-        {label ?? STATUS_LABEL[status]}
+      <Text style={[textSize, { color: token.text }]} numberOfLines={1}>
+        {displayLabel}
       </Text>
     </View>
   );

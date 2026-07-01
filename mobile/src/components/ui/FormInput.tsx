@@ -16,6 +16,7 @@ import {
   Platform,
   TextInputProps,
 } from 'react-native';
+import { useNativeDriver } from '../../utils/animation';
 
 interface FormInputProps extends TextInputProps {
   label: string;
@@ -60,11 +61,11 @@ export const FormInput = React.forwardRef<TextInput, FormInputProps>(
     useEffect(() => {
       if (error) {
         Animated.sequence([
-          Animated.timing(shakeAnim, { toValue: 6, duration: 60, useNativeDriver: true }),
-          Animated.timing(shakeAnim, { toValue: -6, duration: 60, useNativeDriver: true }),
-          Animated.timing(shakeAnim, { toValue: 4, duration: 60, useNativeDriver: true }),
-          Animated.timing(shakeAnim, { toValue: -4, duration: 60, useNativeDriver: true }),
-          Animated.timing(shakeAnim, { toValue: 0, duration: 60, useNativeDriver: true }),
+          Animated.timing(shakeAnim, { toValue: 6, duration: 60, useNativeDriver }),
+          Animated.timing(shakeAnim, { toValue: -6, duration: 60, useNativeDriver }),
+          Animated.timing(shakeAnim, { toValue: 4, duration: 60, useNativeDriver }),
+          Animated.timing(shakeAnim, { toValue: -4, duration: 60, useNativeDriver }),
+          Animated.timing(shakeAnim, { toValue: 0, duration: 60, useNativeDriver }),
         ]).start();
       }
     }, [error]);
@@ -151,10 +152,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...Platform.select({
       ios: {
-        shadowColor: '#6366f1',
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0,
-        shadowRadius: 8,
+        boxShadow: '0 0 8px #6366f1',
       },
     }),
   },

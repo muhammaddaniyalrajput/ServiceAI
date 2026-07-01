@@ -15,6 +15,7 @@ import {
   Animated,
   StyleSheet,
 } from 'react-native';
+import { useNativeDriver } from '../utils/animation';
 import { getAgentLogs } from '../services/api';
 import { useBookingStore, AgentTraceStep } from '../store/bookingStore';
 
@@ -51,8 +52,8 @@ const SlideInRow = ({ step }: { step: AgentTraceStep }) => {
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(slideAnim,   { toValue: 0, duration: 400, useNativeDriver: true }),
-      Animated.timing(opacityAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
+      Animated.timing(slideAnim,   { toValue: 0, duration: 400, useNativeDriver }),
+      Animated.timing(opacityAnim, { toValue: 1, duration: 400, useNativeDriver }),
     ]).start();
   }, []);
 

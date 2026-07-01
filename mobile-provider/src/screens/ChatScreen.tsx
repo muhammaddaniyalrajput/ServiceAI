@@ -46,6 +46,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { useSingleJobListener } from '@/hooks/useProviderJobs';
+import { useNativeDriver } from '@/utils/animation';
 import { providerAPI } from '@/services/providerAPI';
 import {
   AppColors,
@@ -227,7 +228,7 @@ export default function ChatScreen() {
     Animated.timing(sheetAnim, {
       toValue: timePickerVisible ? 1 : 0,
       duration: timePickerVisible ? 240 : 200,
-      useNativeDriver: true,
+      useNativeDriver,
     }).start();
   }, [timePickerVisible, sheetAnim]);
 
@@ -253,7 +254,7 @@ export default function ChatScreen() {
     }
 
     try {
-      await providerAPI.sendChatMessage(bookingId, text, 'provider');
+      await providerAPI.sendChatMessage(bookingId, currentUserId, text, 'provider');
       Keyboard.dismiss();
     } catch (err) {
       const message =

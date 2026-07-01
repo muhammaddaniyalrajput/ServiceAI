@@ -21,6 +21,7 @@ import {
   StatusBar,
   TouchableOpacity,
 } from 'react-native';
+import { useNativeDriver } from '../utils/animation';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
@@ -39,8 +40,8 @@ const SkeletonCard: React.FC<{ index: number }> = ({ index }) => {
     const delayTimer = setTimeout(() => {
       Animated.loop(
         Animated.sequence([
-          Animated.timing(shimmer, { toValue: 1, duration: 900, useNativeDriver: true }),
-          Animated.timing(shimmer, { toValue: 0, duration: 900, useNativeDriver: true }),
+          Animated.timing(shimmer, { toValue: 1, duration: 900, useNativeDriver }),
+          Animated.timing(shimmer, { toValue: 0, duration: 900, useNativeDriver }),
         ]),
       ).start();
     }, index * 150); // Stagger start times
@@ -77,8 +78,8 @@ const ProviderCard: React.FC<{
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(slideAnim,   { toValue: 0, duration: 380, delay: index * 70, useNativeDriver: true }),
-      Animated.timing(opacityAnim, { toValue: 1, duration: 380, delay: index * 70, useNativeDriver: true }),
+      Animated.timing(slideAnim,   { toValue: 0, duration: 380, delay: index * 70, useNativeDriver }),
+      Animated.timing(opacityAnim, { toValue: 1, duration: 380, delay: index * 70, useNativeDriver }),
     ]).start();
   }, []);
 
