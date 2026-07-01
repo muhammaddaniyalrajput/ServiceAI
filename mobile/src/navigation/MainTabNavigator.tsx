@@ -85,7 +85,7 @@ export default function MainTabNavigator() {
         name="Home"
         component={HomeScreen}
         options={{
-          title:       'ServiceFlow AI',
+          title:       'KaamEasy AI',
           tabBarLabel: 'Home',
           tabBarIcon:  ({ focused }) => <TabIcon emoji="🏠" focused={focused} label="Home" />,
         }}

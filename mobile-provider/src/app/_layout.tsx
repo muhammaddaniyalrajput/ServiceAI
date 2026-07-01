@@ -39,7 +39,10 @@ function RootLayoutNav() {
       try {
         const token = await getPushTokenAsync();
         if (token && providerId) {
-          console.log('FCM Token set up:', token);
+          // Register the device token with the backend so job-dispatch
+          // push notifications can actually reach this provider.
+          await providerAPI.registerFcmToken(token);
+          console.log('FCM token registered with backend for provider', providerId);
         }
       } catch (err) {
         console.warn('FCM setup failed:', err);

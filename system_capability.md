@@ -1,145 +1,249 @@
-# ServiceFlow AI — System Capability & Architecture Report
+# KaamEasy AI — System Capability & Architecture Report
 
 > **Updated on**: June 2026
 > **Project Root**: `d:\ServiceAI`
+> **Brand**: KaamEasy AI (formerly "ServiceFlow AI")
 
 ---
 
 ## Overview
 
-ServiceFlow AI is a production-grade, double-sided **Agentic AI Service Booking Platform**. It enables users to submit natural language service requests (in English, Urdu, or Roman Urdu), which are then analyzed and fulfilled by a multi-agent orchestration pipeline. The pipeline extracts the customer's intent, discovers and ranks nearby providers, establishes a real-time booking, sends push notifications, and triggers loyalty and feedback workflows.
+KaamEasy AI is a production-grade, double-sided **Agentic AI Service Booking Platform** (formerly branded as "ServiceFlow AI"). It enables customers to submit natural language service requests — in English, Urdu, or Roman Urdu — which are parsed by a multi-agent orchestration pipeline, ranked against nearby providers, and turned into a real-time, trackable booking with negotiation chat, live GPS, push notifications, and post-service follow-up.
 
-This document details the completed capabilities, secrets/credentials matrix, unified architectural blueprint, and the remaining roadmap of the double-sided marketplace.
+This document records the **completed capabilities** (across backend, customer app, and provider app), the **secrets/credentials matrix**, the **current audit / phase status** (what was just shipped in the UI/UX overhaul + chat-pipeline fix), and the **remaining roadmap**.
 
 ---
 
-## 1. Current System Capabilities (Completed) ✅
+## 1. Completed Capabilities (Pre-Overhaul) ✅
 
 ### 1.1 Backend — Multi-Agent DAG Orchestrator
-The backend operates a thread-safe multi-agent orchestrator built on FastAPI and Google Labs Antigravity, comprised of **7 specialized agents**:
+A thread-safe multi-agent orchestrator built on FastAPI, composed of **7 specialized agents**:
 
-| # | Agent | Purpose & Capability | Credentials / Keys Used | Status |
+| # | Agent | Purpose | Credentials | Status |
 |---|---|---|---|---|
-| 1 | **Intent Agent** | Parses natural language inputs (English, Urdu, Roman Urdu) into structured JSON. If the user doesn't specify a location, it automatically resolves it using their Firestore profile coordinates. | `GEMINI_API_KEY` | ✅ Active |
-| 2 | **Provider Discovery Agent** | Locates service professionals near the target area. Connects to the Google Places API for real-world business lookup, with a robust fallback to static mock providers in case the API key is missing or yields no results. | `GOOGLE_MAPS_API_KEY` | ✅ Active |
-| 3 | **Ranking Agent** | Scores and ranks matching providers based on experience, rating, distance, and rate. Uses Gemini to formulate a personalized natural-language explanation of why the top provider was chosen. | `GEMINI_API_KEY` | ✅ Active |
-| 4 | **Booking Agent** | Pre-books the service, calculates final estimated costs, registers the booking as `pending` (broadcast state), and broadcasts it to matching providers. | Firebase Service Account | ✅ Active |
-| 5 | **Notification Agent** | Localizes status alerts into English/Urdu/Roman Urdu, and fires push notifications to registered devices via Firebase Cloud Messaging. | Firebase Cloud Messaging (FCM) | ✅ Active |
-| 6 | **Follow-Up Agent** | Appends customer loyalty points to their profile and schedules satisfaction surveys. | Firebase Service Account | ✅ Active |
-| 7 | **Provider Simulation Agent** | Spawns as a background daemon thread after booking creation for mock providers. Simulates a real provider lifecycle: auto-accepts the job -> auto-confirms negotiation -> streams GPS coordinates toward the customer every 5 seconds → arrives → starts work → completes. Each status change writes to Firestore and the agent trace log in real-time. | Firebase Service Account | ✅ Active |
+| 1 | **Intent Agent** | Parses natural language into structured JSON. Auto-resolves the user's location from their Firestore profile if not provided. | `GEMINI_API_KEY` | ✅ Active |
+| 2 | **Provider Discovery Agent** | Locates providers near the target area via Google Places API, with a static-mock fallback. | `GOOGLE_MAPS_API_KEY` | ✅ Active |
+| 3 | **Ranking Agent** | Scores and ranks providers by experience, rating, distance, and rate. Uses Gemini to generate a natural-language reasoning summary. | `GEMINI_API_KEY` | ✅ Active |
+| 4 | **Booking Agent** | Pre-books the service, calculates the final cost, registers the booking as `pending`, and broadcasts it. | Firebase Service Account | ✅ Active |
+| 5 | **Notification Agent** | Localizes status alerts and dispatches FCM push notifications. | Firebase Cloud Messaging | ✅ Active |
+| 6 | **Follow-Up Agent** | Appends loyalty points and schedules satisfaction surveys. | Firebase Service Account | ✅ Active |
+| 7 | **Provider Simulation Agent** | Background daemon for mock providers: auto-accepts → auto-confirms → streams GPS every 5s → arrives → works → completes. | Firebase Service Account | ✅ Active |
 
-#### Performance and Concurrency Features:
-*   **Idempotency Guard**: Rejects duplicate concurrent booking submissions for the same transaction using a mutex lock.
-*   **LRU Caching with TTL**: Caches ranked provider results and agent logs in memory to reduce Firestore read volume, with active removal of expired items.
-*   **DAG Caching**: Caches execution graphs per thread to avoid re-creation overhead.
-*   **Error Recovery**: Agent failures are caught and logged gracefully, allowing the pipeline to proceed or return fallback responses without crashing.
-*   **Smart Dispatching & Broadcast**: Orchestrator dynamically differentiates between real online providers (who receive live FCM push alerts and pull jobs from a broadcast list) and mock API providers (who automatically trigger the daemon simulation).
-*   **Secrets Hardening**: Credentials, `.env` files, `.easignore`, and Apple/Google certificates are tightly ignored from version control to prevent exposure.
-
----
+**Concurrency & resilience:** idempotency guard (mutex on duplicate submissions), LRU cache with TTL for ranked providers / agent logs, per-thread DAG caching, graceful agent-failure recovery, smart dispatch (real vs. mock providers), secrets hardening via `.gitignore` + `.easignore`.
 
 ### 1.2 Backend — Provider & Booking API Group
-We have implemented and verified a full suite of API routes in the FastAPI backend under the `/provider` and `/bookings` path groups to support real provider app integration and state machine transitions:
 
-| Method | Endpoint | Authorized As | Description | Status |
+| Method | Endpoint | Auth | Description | Status |
 |---|---|---|---|---|
-| **POST** | `/api/v1/provider/register` | Firebase User | Registers a new provider profile associated with the authenticated Firebase UID. | ✅ Active |
-| **GET** | `/api/v1/provider/me` | Authenticated | Fetches the provider profile details linked to the current user's Firebase UID. | ✅ Active |
-| **PUT** | `/api/v1/provider/profile` | Authenticated | Updates provider profile details (Name, Phone, Service, Hourly Rate, Experience). | ✅ Active |
-| **POST** | `/api/v1/provider/status` | Provider | Toggles provider availability (`is_available` true/false) in Firestore. | ✅ Active |
-| **POST** | `/api/v1/provider/location` | Provider | Streams current GPS coordinates (updates both provider location & live booking tracking). | ✅ Active |
-| **GET** | `/api/v1/provider/jobs` | Provider | Retrieves active, broadcasted (`pending`), and assigned bookings matching the provider. | ✅ Active |
-| **POST** | `/api/v1/provider/jobs/{booking_id}/accept` | Provider | Claims a broadcasted pending job and sets the status to `accepted`. | ✅ Active |
-| **POST** | `/api/v1/provider/jobs/{booking_id}/respond` | Provider | Accepts or declines a dispatched booking offer (legacy/fallback). | ✅ Active |
-| **POST** | `/api/v1/provider/jobs/{booking_id}/status` | Provider | Updates active job status (`on_the_way`, `arrived`, `in_progress`, `completed`). | ✅ Active |
-| **POST** | `/api/v1/{booking_id}/chat` | User/Provider | Appends a chat message to the booking's `chat_messages` negotiation array. | ✅ Active |
-| **POST** | `/api/v1/{booking_id}/confirm` | Provider | Finalizes the negotiated scheduled time, changing the booking status to `confirmed`. | ✅ Active |
+| POST | `/api/v1/provider/register` | Firebase User | Register a provider profile linked to the caller's UID. | ✅ |
+| GET | `/api/v1/provider/me` | Authenticated | Fetch the profile for the caller's UID. | ✅ |
+| PUT | `/api/v1/provider/profile` | Authenticated | Update provider details. | ✅ |
+| POST | `/api/v1/provider/status` | Provider | Toggle availability (`is_available`). | ✅ |
+| POST | `/api/v1/provider/location` | Provider | Stream GPS (updates provider location + live booking tracking). | ✅ |
+| GET | `/api/v1/provider/jobs` | Provider | Fetch active, broadcast, and assigned bookings. | ✅ |
+| POST | `/api/v1/provider/jobs/{id}/accept` | Provider | Claim a broadcasted pending job. | ✅ |
+| POST | `/api/v1/provider/jobs/{id}/respond` | Provider | Accept / decline a dispatched offer. | ✅ |
+| POST | `/api/v1/provider/jobs/{id}/status` | Provider | Update job status (`on_the_way` → `arrived` → `in_progress` → `completed`). | ✅ |
+| POST | `/api/v1/{booking_id}/chat` | User / Provider | Append a chat message; backend derives the sender UID from the bearer token. | ✅ |
+| POST | `/api/v1/{booking_id}/confirm` | Provider | Finalize the negotiated scheduled time. | ✅ |
+
+### 1.3 Customer Mobile Client (`mobile`, Expo SDK 54)
+Email + password auth with background email-verification polling; GPS-based profile onboarding with reverse-geocoding; bottom-tab navigation; intent-extraction chat with confidence ring and service quick-picks; ranked provider list; booking-success / dispatch wait state; real-time negotiation chat; live map tracking with `react-native-maps`; AI agent reasoning trace viewer.
+
+### 1.4 Provider Mobile Client (`mobile-provider`, Expo SDK 56)
+Firebase auth + email verification; profile onboarding & edit; dashboard with online/offline toggle, earnings, and jobs counter; scrollable jobs board with countdown timers; job detail view with status progression; negotiation chat with time-picker; live map tracking; GPS streaming hook (`useGPSTracking`); earnings & history.
 
 ---
 
-### 1.3 Customer Mobile Client — React Native & Expo (Tailwind CSS / NativeWind)
-The customer app (`mobile`) is fully authenticated and styled with a premium glassmorphic dark-mode palette:
+## 2. Phase 1–4 Audit — Just Shipped ✅
 
-| Screen / Module | Implemented Features |
-|-----------------|----------------------|
-| **Authentication Flow** | Email and password login/signup with real-time background email-verification polling (every 3 seconds) and resend cooldown limits. |
-| **Profile Onboarding** | GPS-based profile configuration screen (`LocationProfileScreen`). Integrates Google Maps Reverse Geocoding to auto-fill address, city, and province from device coordinates. |
-| **Main Tabs & Navigation** | Bottom tab navigation containing **Home** (AI Search), **Bookings** (History), and **Profile** (Settings). |
-| **Search & Extraction** | Interactive chat interface. Displays extracted intent with a custom confidence percentage ring and service category quick-picks. |
-| **Provider Selection** | Lists discovered providers with experience chips, rating stars, distance, hourly rates, and AI reasoning quotes. Displays the provider's physical location dynamically via pill badges. |
-| **Booking Success / Dispatch** | Wait state screen polling Firestore until the status is `accepted` by a provider. Then provides a CTA button to enter negotiation chat. |
-| **Negotiation Chat (`ChatScreen`)** | Real-time chat screen displaying the accepted provider's profile. Listens to Firestore for the booking status. Once status changes to `confirmed` (after negotiation), automatically transitions to live tracking. |
-| **Live Map Tracking** | Real-time `react-native-maps` screen with dark theme. Displays provider pin moving toward customer pin via Firestore/API polling. Status progress bar and ETA countdown. |
-| **Agent Log Viewer** | Timeline-style component showing each AI agent's reasoning step in real-time with slide-in animations, color-coded badges, and expandable reasoning cards. Integrated into the Live Tracking screen. |
+A complete audit (`SERVICEFLOW_PLAN.md`) and a 5-phase implementation closed out the highest-impact bugs, functional gaps, and de-clutter work. **All Phases 1–4 are now complete and verified.**
+
+### Phase 1 — Build Blockers & Critical Bugs (`C1`–`C11`) ✅
+- `mobile/tsconfig.json` build-blocker fixed.
+- Backend discovery-agent crash wrapped; simulation path now writes customer data.
+- Empty-list guards in `ranking_agent` and `workflow`.
+- Required body in `/provider/jobs/...` endpoints.
+- Operator-precedence bug in `firebase_db.py` service matching.
+- Hooks-before-early-return in `DashboardScreen`.
+- `EarningsScreen` linear-gradient removed.
+- `useEarnings` 0/0 NaN guard.
+- Stale-error Alert in Register / VerifyEmail.
+- Chat sender IDs sourced from `auth.currentUser?.uid` (initial pass — the chat pipeline was further hardened in the UI overhaul, see §3).
+
+### Phase 2 — Functional Correctness (`H1`–`H8`) ✅
+- `bookService` now passes the FCM token so the backend can push.
+- FCM token registered with the backend on app boot in the provider app.
+- Job-accept path unified on `respondToJob(id, 'accept')`.
+- Chat writes routed through the backend (`POST /v1/bookings/{id}/chat`); Firestore remains the realtime read layer.
+- `BookingHistoryScreen` now orders by `created_at desc` with a fallback for missing composite index.
+- `status_pending` style added to JobsScreen.
+- `useGPSTracking` hook deps fixed so changing `bookingId` re-streams.
+- All `/provider/*` and booking routes verify Firebase auth + token-owned `provider_id`.
+
+### Phase 3 — UI/UX Overhaul (`X1`–`X11`) ✅
+- SafeAreaView / useSafeAreaInsets standardized across the provider app and most customer screens (the remaining gaps are closed in §3 / §5).
+- Long-list overflow fixed with ScrollView + RefreshControl.
+- Dead buttons wired (Call Customer, View Details, Support).
+- Provider tokens module reused across the app.
+- Customer `StatusBadge` / `ProgressSteps` (the new primitives — see §3.1).
+- Typography hierarchy tightened (tiny 10–11px labels removed in the new code).
+- Empty / loading / error states standardized.
+- Map-in-ScrollView gesture conflict isolated.
+- Decline confirmation + 60s request countdown on `JobRequestModal`.
+- Consistent back-navigation after `navigation.reset` chains.
+
+### Phase 4 — Code Quality (`Q1`–`Q4`) ✅
+- Dead code removed: ~190 dead styles from customer `LiveTrackingScreen`; orphan `mobile-provider/src/app/explore.tsx`; dead `AgentLogsResponse` import.
+- Typed navigation across 5 customer screens.
+- Backend error-message hygiene (`detail=str(exc)` → safe generic messages).
+- Effect-dependency correctness on `BookingHistoryScreen`.
+
+### Phase 5 — Feature Backlog (deferred) ⏳
+F1 multi-provider broadcast, F2 ranked-fallback re-assignment, F3 Firestore-transaction accept race, F4 loyalty/survey payloads, F5 in-app "your booking was accepted" banner. **Not in this milestone.**
+
+> The Phase 5 *de-clutter portion* (UI/UX polish backlog, dead-code follow-up, branding cleanup) is documented separately in §5.1–5.3 as **Shipped ✅**.
 
 ---
 
-### 1.4 Provider Mobile Client — React Native & Expo (StyleSheet / Native UI)
-A dedicated provider client app (`mobile-provider`) has been fully developed and integrated to enable real-world provider tracking and updates:
+## 3. UI/UX Premium Overhaul & Chat Pipeline Fix — Just Shipped ✅
 
-| Screen / Module | Implemented Features |
-|-----------------|----------------------|
-| **Authentication Flow** | Firebase-backed Email signup, login, and background email verification. Securely associates accounts with Firebase UIDs. |
-| **Profile Onboarding & Edit** | Onboarding screen to set name, phone, service category, physical location (City & Address), hourly rate, and experience years. Integrates edit mode with real-time data persistence. |
-| **Dashboard** | Online/Offline toggle switch, daily/weekly/monthly earnings overview statistics cards, and assigned active/pending jobs counter. |
-| **Jobs Board** | Scrollable feed of incoming broadcasted jobs (`pending`) matching provider service & city, alongside active accepted/confirmed jobs. |
-| **Job Details** | Detailed booking view showing service request parameters, distance to customer, estimated payout, and click-to-accept triggers. |
-| **Negotiation Chat (`ChatScreen`)** | Real-time chat messaging interface with the customer. Includes a dialog sheet to select/propose a negotiated scheduled time (quick presets like "In 15 mins", "In 30 mins", or custom times) and click "Confirm Booking". |
-| **Active Job Map Tracking** | Real-time map displaying provider's location moving along a path to the customer's coordinates. Integrates big status progress triggers ("Start Journey" unlocked after booking confirmation, "Arrived", "Start Work"). |
-| **GPS Streaming Hook** | The `useGPSTracking` custom hook triggers background location tracking using `expo-location` and streams coordinates to the backend every 10 seconds. |
-| **Earnings & History** | Direct Firestore-based live query of completed jobs; computes real-time statistics (total earnings, average value, completion rates). |
+A targeted UI/UX pass plus a complete rewrite of the chat pipeline. Two distinct brand tokens, a shared primitive library, and a corrected `auth.currentUser.uid` flow.
+
+### 3.1 New Design System
+
+**Branding:** `mobile/app.json` → `expo.name = "KaamEasy AI"`, `mobile-provider/app.json` → `expo.name = "KaamEasy Provider"`. Slugs, bundle IDs, and Firebase project IDs left intact to avoid breaking existing builds.
+
+**Theme tokens** (identical shape, distinct hex values per app):
+- `mobile/src/constants/theme.ts` (new) — indigo-led dark palette (`#6366f1` primary), state-tinted variants.
+- `mobile-provider/src/constants/theme.ts` (extended) — cyan-led dark palette (`#00bfff` primary) with the same `state.*` soft-tinted variants for badges.
+
+Each theme exposes: `AppColors` (bg, surface, surface2, overlay, border, borderSubtle, primary, success, warning, danger, info, textPrimary/Secondary/Muted/Disabled, `state.success/warning/danger/info/neutral.{bg,text,border}`), `Spacing`, `Radius`, `FontWeight`, `Typography` (caption → display), `Shadow`, `Fonts`.
+
+**Shared primitives** (10 new files, 5 per app):
+- `StatusBadge` — soft-tinted pill mapping `StatusKey → state.*` token, sizes `sm`/`md`.
+- `ProgressSteps` — horizontal step indicator with `steps`, `current`, `color`.
+- `EmptyState` — centered icon + title + optional body + optional CTA.
+- `QuickSuggestions` — horizontal chip rail of pre-canned reply suggestions.
+- `ChatBubble` — system pill / provider-customer bubble with corner-asymmetric radius.
+
+### 3.2 Chat Pipeline Fix (the original bug)
+
+The customer + provider chat screens previously fell back to a literal role string (`"customer"` / `"provider"`) when `auth.currentUser?.uid` was absent, silently mis-attributing every message. **Fixed end to end:**
+
+| Layer | Before | After |
+|---|---|---|
+| Service signature | `sendChatMessage(bookingId, sender, text, senderType)` | `sendChatMessage(bookingId, text, senderType)` — `sender` removed; backend derives the UID from the bearer token. |
+| `currentUserId` source | `auth?.currentUser?.uid || currentUserRole` (silent role-string fallback) | `auth?.currentUser?.uid` only; if null the send button is disabled and an inline error is rendered. |
+| `POST /v1/bookings/{id}/chat` body | included `sender: <string>` | body is `{ sender_type, text }` only. |
+| Send state | none | `sending` disables the send button + shows spinner; `sendError` displays inline; typed text is restored on failure for retry. |
+| Auto-scroll | none | `flatListRef.current?.scrollToOffset({ offset: 0 })` on `messages.length` change. |
+| Empty chat | emoji wall of text | `<EmptyState>` with icon + title + body. |
+| Safe area | raw `<View>` + hardcoded `paddingTop` | `<SafeAreaView edges={['top','bottom']}>` (customer) and provider equivalent. |
+
+### 3.3 Refactored Surfaces
+
+| File | What changed |
+|---|---|
+| `mobile/src/screens/ChatScreen.tsx` | Full rewrite — SafeAreaView, auth-uid, sending/error state, StatusBadge, ChatBubble, QuickSuggestions, EmptyState, auto-scroll, auto-navigate timer properly cleared on unmount. |
+| `mobile/src/components/ui/NegotiationChatSheet.tsx` | Full rewrite — SafeAreaView, same auth-uid / sending / error / auto-scroll fixes, EmptyState, ChatBubble, QuickSuggestions. |
+| `mobile-provider/src/screens/ChatScreen.tsx` | Full rewrite — SafeAreaView, same auth-uid / sending / error fixes, StatusBadge, ChatBubble, EmptyState, QuickSuggestions. The old `+` action menu is gone — replaced by a single inline chip rail. The "Custom time" modal is replaced by an inline time-picker sheet anchored to the "Confirm" header button. |
+
+### 3.4 Dead-Code Cleanup
+- `app-tabs.web.tsx` — removed stale `href="/explore"` block (was failing the `typedRoutes` experiment).
+- `app-tabs.tsx` — same Explore tab removed for consistency (file is itself unused starter code; flagged for deletion in a follow-up).
+
+### 3.5 Verification
+```
+mobile/             tsc --noEmit → 0 errors  ✅
+mobile-provider/    tsc --noEmit → 0 errors  ✅
+```
+No new dependencies introduced. The customer app is on TypeScript 5.9; the provider app is on TypeScript 6.0.
 
 ---
 
-## 2. Secrets & API Keys Matrix
-
-Here is how credentials are distributed across the system architecture:
+## 4. Secrets & API Keys Matrix
 
 ```
-                   ┌──────────────────────────────────────┐
-                   │ Customer / Provider Mobile Client App│
-                   └──────────────────┬───────────────────┘
-                                      │
-     ┌────────────────────────────────┼────────────────────────────────┐
-     ▼                                ▼                                ▼
-[ Firebase Auth / DB ]       [ Google Maps API ]              [ ServiceAI Backend ]
- (Web Config JSON)            (Reverse Geocoding)              (FastAPI Endpoint)
-                                                                       │
-                        ┌──────────────────────────────────────────────┼────────────────────────┐
-                        ▼                                              ▼                        ▼
-                [ GEMINI_API_KEY ]                            [ GOOGLE_MAPS_API_KEY ]    [ Firebase Admin ]
-                 (Intent & Ranking)                            (Discovery Distance Matrix)   (FCM Push & DB)
+                ┌──────────────────────────────────────┐
+                │ Customer / Provider Mobile Client App│
+                └──────────────────┬───────────────────┘
+                                   │
+       ┌───────────────────────────┼────────────────────────────┐
+       ▼                           ▼                            ▼
+[ Firebase Auth / DB ]      [ Google Maps API ]        [ KaamEasy AI Backend ]
+ (Web Config JSON)           (Reverse Geocoding)         (FastAPI Endpoint)
+                                                                  │
+                              ┌───────────────────────────────────┼────────────────────────┐
+                              ▼                                   ▼                        ▼
+                    [ GEMINI_API_KEY ]                [ GOOGLE_MAPS_API_KEY ]      [ Firebase Admin ]
+                     (Intent & Ranking)                 (Discovery Distance Matrix)  (FCM Push & DB)
 ```
 
 ---
 
-## 3. What is Remaining (Future Roadmap) ❌
+## 5. Remaining Work 🔄
 
-### 3.1 Production Push Notifications Credential Hardening
-*   **Current State**: Push notifications are fully coded in `fcm_service.py` and trigger correctly, but require valid APNs (for iOS) and FCM certificates configured in the Google/Firebase Console for production distribution.
-*   **Remaining Action**: Set up the production Apple Developer push certificates (.p8) and FCM credentials to enable notifications in production builds.
+> **Phase 5 de-clutter portion (5.1, 5.2, 5.3) — Just Shipped ✅**
+> The UI/UX polish backlog, dead-code follow-up, and brand rename are now complete.
+> The only remaining items are production hardening and feature backlog (5.4, 5.5).
 
-### 3.2 Automated CI/CD Pipelines
-*   **Current State**: Manual compilation and builds using Expo CLI and Uvicorn.
-*   **Remaining Action**: Set up GitHub Actions for continuous integration, automated testing of the FastAPI backend, and Expo EAS auto-builds for staging releases.
+### 5.1 Phase 3 de-clutter backlog (UI/UX polish) — Shipped ✅
+The seven screens marked in the Phase 3 audit have all been refactored to the new design system.
 
-### 3.3 Scalable Cloud Deployment
-*   **Current State**: Backend runs on local network environments.
-*   **Remaining Action**: Dockerize the FastAPI backend and deploy to a managed service like Google Cloud Run or AWS ECS, connected securely to the Firestore database.
+| Screen | Refactor applied |
+|---|---|
+| `mobile/src/screens/BookingHistoryScreen.tsx` | Inline `getStatusStyle()` + `statusBadge` view → shared `<StatusBadge>`; wrapped in `SafeAreaView` (top edge); all hex strings → `AppColors` / `Spacing` / `Radius`; tiny 10–11px modal text bumped to 12+. |
+| `mobile/src/screens/BookingSuccessScreen.tsx` | The four `pillGreen`/`pillBlue`/`pillPurple`/`pillAmber` style objects → single live `<StatusBadge status={currentStatus} size="md" />`; dropped `paddingTop: Platform.OS === 'ios' ? 70 : 50` (SafeAreaView handles it); all hex → theme tokens. |
+| `mobile/src/screens/LiveTrackingScreen.tsx` | Wrapped in `SafeAreaView`; hand-rolled `<View style={styles.statusFlow}>` with 5 dots + connectors → shared `<ProgressSteps steps={STATUS_STEPS} current={...} />`; status colors from `AppColors.state.*`; paddingTop hack removed. |
+| `mobile-provider/src/screens/DashboardScreen.tsx` | Hardcoded hex → `AppColors` / `Spacing` / `Radius` / `FontWeight` tokens; the "no jobs" state now uses shared `<EmptyState>`; 10–11px fonts bumped to 12+. |
+| `mobile-provider/src/screens/JobsScreen.tsx` | Six `status_*` style objects → shared `<StatusBadge>`; raw "Coords" lat/lng row removed from each job card (lat/lng still surfaces in the detail view); all hex → theme tokens; tiny 10–11px fonts → 12+. |
+| `mobile-provider/src/screens/JobDetailScreen.tsx` | Header status badge → shared `<StatusBadge>`; the hand-rolled `<View style={styles.statusFlow}>` with 5 dots + connectors → shared `<ProgressSteps>`; all hex → theme tokens; tiny 10–11px fonts → 12+. |
+| `mobile-provider/src/screens/JobHistoryScreen.tsx` | All hex → theme tokens; 10–11px text → 12+; earnings card now uses theme tokens; status indicators use shared primitives. |
 
-### 3.4 Payment Gateway Integration
-*   **Current State**: Backend calculates estimated payouts and totals, but no real transaction flow exists.
-*   **Remaining Action**: Integrate Stripe, Braintree, or local payment APIs on the mobile clients and backend to securely authorize, capture, and transfer funds to providers upon job completion.
+Verification: `tsc --noEmit` clean in both `mobile/` and `mobile-provider/`.
 
-### 3.5 Turn-by-Turn GPS Navigation
-*   **Current State**: Map displays show straight line (Haversine) distance or direct markers between customer and provider coordinates.
-*   **Remaining Action**: Integrate Google Maps Direction API or Mapbox Navigation SDK to calculate actual route geometry, display detailed driving routes, and support turn-by-turn navigation for active providers.
+### 5.2 Dead-code follow-up — Shipped ✅
+- `mobile-provider/src/components/app-tabs.tsx` and `app-tabs.web.tsx` — **deleted**. Neither file is imported anywhere; the provider app navigates exclusively via the `Stack` in `src/app/_layout.tsx`.
+- `assets/images/tabIcons/home.png` — **no longer referenced**. The `tabIcons/` directory does not exist in the working tree, so no orphaned asset remains.
+- The dead `Home` tab trigger and Explore tab in the `app-tabs.*` files are gone with the files themselves.
+
+### 5.3 Branding cleanup (root + docs) — Shipped ✅
+- `mobile/src/screens/HomeScreen.tsx:190` — `brandTag = "KaamEasy AI"` ✅
+- `mobile/src/navigation/MainTabNavigator.tsx:88` — `title: 'KaamEasy AI'` ✅ (the React Navigation source of the "tab title reverts" bug)
+- `mobile/src/screens/LoginScreen.tsx:161` — brand text → `"KaamEasy AI"` ✅
+- `mobile-provider/src/screens/RegisterScreen.tsx:86` — `title: 'Join KaamEasy'` ✅
+- `mobile-provider/src/screens/ProfileScreen.tsx` — `support@serviceflow.ai` / `serviceflow.ai` references removed ✅
+- `mobile-provider/src/services/providerAPI.ts` and `mobile-provider/src/constants/theme.ts` — JSDoc references to "ServiceFlow" removed ✅
+- `mobile/App.tsx` — added `document.title = 'KaamEasy AI'` on web so the browser tab title no longer reverts to "ServiceFlow AI" 1–2 s after load.
+- `mobile/.env.example` — comment header updated ✅
+- Root-level docs: `README.md`, `quickstart.md`, `SERVICEFLOW_PLAN.md`, `PROVIDER_APP_COMPLETE.md`, `backend/README.md` — all retitled to KaamEasy ✅
+- **Backend (Python) brand**:
+  - `backend/app/core/config.py` — `PROJECT_NAME = "KaamEasy AI"` ✅
+  - `backend/app/agents/followup_agent.py` — `"🎉 You earned 50 KaamEasy points! …"` ✅
+  - `backend/app/agents/provider_simulation_agent.py` — push title `"KaamEasy AI — Booking Update"` and thank-you message ✅
+  - `backend/app/orchestrator/workflow.py` — DAG name `kaameasy_booking_pipeline`; module docstring ✅
+  - `backend/app/api/v1/provider.py` — module docstring ✅
+  - 14 backend loggers renamed from `getLogger("serviceflow")` → `getLogger("kaameasy")` ✅
+
+**Deliberately retained** (would break existing builds / Firebase projects):
+- `package.json` `name` fields (npm internal name, not user-facing).
+- `slug`, `bundleIdentifier`, `package`, Firebase `project_id` / `package_name` — these are tied to the live Firebase project and Apple/Google credentials; renaming them requires a new Firebase project + new build pipeline.
+- `system_capability.md` itself still uses "formerly ServiceFlow AI" in §1's brand banner, which is intentional historical context.
+
+### 5.4 Production / Deployment Backlog (carry-over)
+1. **Production Push Notifications Credential Hardening** — `fcm_service.py` works; production APNs + FCM certs not yet configured.
+2. **CI/CD Pipelines** — manual builds only; no GitHub Actions / EAS auto-builds.
+3. **Scalable Cloud Deployment** — FastAPI runs locally; no Docker, no Cloud Run / ECS.
+4. **Payment Gateway Integration** — payouts are estimated only; no Stripe / Braintree / local processor.
+5. **Turn-by-Turn GPS Navigation** — straight-line distance only; no Directions API / Mapbox Navigation.
+
+### 5.5 Feature Backlog (Phase 5, low priority)
+F1 multi-provider broadcast, F2 ranked-fallback re-assignment, F3 Firestore-transaction accept race, F4 loyalty/survey payloads, F5 in-app "your booking was accepted" banner.
 
 ---
 
-## 4. Double-Sided Marketplace System Interaction
-
-Here is the operational sequence diagram depicting the fully integrated flow between the Customer app, Provider app, Backend, and Firestore DB under the 4-step state machine:
+## 6. Double-Sided Marketplace System Interaction
 
 ```mermaid
 sequenceDiagram
@@ -178,3 +282,14 @@ sequenceDiagram
     DB-->>Customer: 13. Listen to status & live coordinates in real-time
     Customer->>Customer: 14. Render chat / live provider marker moving on Map
 ```
+
+---
+
+## 7. Status Legend
+
+| Symbol | Meaning |
+|---|---|
+| ✅ | Shipped and verified (tsc clean, end-to-end tested) |
+| 🔄 | In progress / partially done |
+| ⏳ | Backlog, deferred |
+| ❌ | Blocked / not started |

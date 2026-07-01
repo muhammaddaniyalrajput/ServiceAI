@@ -1,12 +1,13 @@
 /**
- * BookingSuccessScreen — Celebratory confirmation screen.
+ * BookingSuccessScreen — KaamEasy AI celebratory confirmation screen.
  *
- * UX improvements over original:
- * - Scale+fade entrance animation on the success icon
- * - Staggered detail rows fade in sequentially
- * - Pulsing green glow ring behind the checkmark
- * - Decorative accent dots
- * - "Go Home" button with spring animation via PrimaryButton
+ * Refactor notes (Phase 3 de-clutter):
+ *   - Wrapped in `SafeAreaView` so content never clips under the notch.
+ *   - Removed the hardcoded `paddingTop: Platform.OS === 'ios' ? 70 : 50` hack
+ *     (SafeAreaView insets handle it).
+ *   - Replaced the 4 `pillX` style objects (pillGreen/Blue/Purple/Amber) with
+ *     a single `<StatusBadge>` render driven by live `currentStatus`.
+ *   - Pulled all hardcoded hex strings into `AppColors` / `Spacing` / `Radius`.
  */
 import React, { useEffect, useRef } from 'react';
 import {
@@ -15,15 +16,30 @@ import {
   ScrollView,
   StyleSheet,
   Animated,
-  Platform,
   StatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RouteProp } from '@react-navigation/native';
+import { RootStackParamList } from '../types/navigation';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
+import { buildTrackingRouteParams } from '../utils/bookingRoutes';
+import { AppColors, FontWeight, Radius, Spacing } from '../constants/theme';
+import { StatusBadge, type StatusKey } from '../components/ui/StatusBadge';
 
-// ─── Animated detail row ──────────────────────────────────────────────────────
+const ACTIVE_STATUSES: ReadonlySet<StatusKey> = new Set([
+  'accepted',
+  'confirmed',
+  'on_the_way',
+  'arrived',
+  'in_progress',
+  'completed',
+]);
+
+// ─── Animated detail row ─────────────────────────────────────────────────────
 
 const DetailRow: React.FC<{
   label: string;
@@ -39,7 +55,7 @@ const DetailRow: React.FC<{
       Animated.timing(slideAnim,   { toValue: 0, duration: 360, delay: 600 + index * 80, useNativeDriver: true }),
       Animated.timing(opacityAnim, { toValue: 1, duration: 360, delay: 600 + index * 80, useNativeDriver: true }),
     ]).start();
-  }, []);
+  }, [opacityAnim, slideAnim]);
 
   return (
     <Animated.View
@@ -52,20 +68,19 @@ const DetailRow: React.FC<{
 };
 
 const rowStyles = StyleSheet.create({
-  row:         { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12 },
-  label:       { color: '#64748b', fontSize: 13 },
-  value:       { color: '#f1f5f9', fontSize: 13, fontWeight: '700', maxWidth: '60%', textAlign: 'right' },
-  valueAccent: { color: '#818cf8', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: 11 },
+  row:         { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: Spacing.three },
+  label:       { color: AppColors.textMuted, fontSize: 13 },
+  value:       { color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.bold as '700', maxWidth: '60%', textAlign: 'right' },
+  valueAccent: { color: AppColors.textSecondary, fontFamily: 'monospace', fontSize: 11 },
 });
 
-// ─── Screen ───────────────────────────────────────────────────────────────────
+// ─── Screen ──────────────────────────────────────────────────────────────────
 
 export default function BookingSuccessScreen() {
-  const navigation  = useNavigation<any>();
-  const route       = useRoute<any>();
+  const navigation  = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const route       = useRoute<RouteProp<RootStackParamList, 'BookingSuccess'>>();
   const { confirmation } = route.params || {};
 
-  // ── Entrance animations ──
   const iconScale   = useRef(new Animated.Value(0)).current;
   const iconOpacity = useRef(new Animated.Value(0)).current;
   const ringScale   = useRef(new Animated.Value(0.5)).current;
@@ -74,15 +89,12 @@ export default function BookingSuccessScreen() {
   const titleSlide  = useRef(new Animated.Value(16)).current;
   const cardOpacity = useRef(new Animated.Value(0)).current;
   const cardSlide   = useRef(new Animated.Value(24)).current;
-
-  // Continuous pulse on the ring
   const pulseScale  = useRef(new Animated.Value(1)).current;
 
   const [currentStatus, setCurrentStatus] = React.useState('pending');
   const [providerDetails, setProviderDetails] = React.useState<any>(null);
 
   useEffect(() => {
-    // ── Entrance animations ──
     Animated.sequence([
       Animated.parallel([
         Animated.spring(iconScale,   { toValue: 1, useNativeDriver: true, damping: 10, stiffness: 100 }),
@@ -99,7 +111,6 @@ export default function BookingSuccessScreen() {
         Animated.timing(cardSlide,   { toValue: 0, duration: 340, useNativeDriver: true }),
       ]),
     ]).start(() => {
-      // Start pulse after entrance completes
       Animated.loop(
         Animated.sequence([
           Animated.timing(pulseScale, { toValue: 1.12, duration: 1200, useNativeDriver: true }),
@@ -107,7 +118,7 @@ export default function BookingSuccessScreen() {
         ]),
       ).start();
     });
-  }, []);
+  }, [cardOpacity, cardSlide, iconOpacity, iconScale, pulseScale, ringOpacity, ringScale, titleOpacity, titleSlide]);
 
   const bookingData = confirmation?.booking ?? confirmation ?? {};
   const initialProvider = bookingData.provider ?? confirmation?.provider;
@@ -122,8 +133,7 @@ export default function BookingSuccessScreen() {
 
   useEffect(() => {
     if (!bookingIdStr || bookingIdStr === 'N/A' || !db) return;
-    
-    // Listen to firestore for booking status changes
+
     const docRef = doc(db, 'bookings', bookingIdStr);
     const unsubscribe = onSnapshot(docRef, (snapshot) => {
       if (snapshot.exists()) {
@@ -144,12 +154,12 @@ export default function BookingSuccessScreen() {
 
   const isAccepted = currentStatus === 'accepted';
   const isConfirmed = currentStatus === 'confirmed';
+  const statusKey = (currentStatus as StatusKey);
 
   return (
-    <View style={styles.flex}>
-      <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
+    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
+      <StatusBar barStyle="light-content" backgroundColor={AppColors.bg} />
 
-      {/* Decorative blobs */}
       <View style={styles.blobTop} />
       <View style={styles.blobBottom} />
 
@@ -158,16 +168,13 @@ export default function BookingSuccessScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Success icon ── */}
         <View style={styles.iconWrapper}>
-          {/* Pulsing glow ring */}
           <Animated.View
             style={[
               styles.glowRing,
               { opacity: ringOpacity, transform: [{ scale: Animated.multiply(ringScale, pulseScale) }] },
             ]}
           />
-          {/* Icon */}
           <Animated.View
             style={[
               styles.iconCircle,
@@ -178,7 +185,6 @@ export default function BookingSuccessScreen() {
           </Animated.View>
         </View>
 
-        {/* ── Title ── */}
         <Animated.View
           style={[styles.titleBlock, { opacity: titleOpacity, transform: [{ translateY: titleSlide }] }]}
         >
@@ -186,7 +192,7 @@ export default function BookingSuccessScreen() {
             {isConfirmed ? 'Booking Confirmed!' : isAccepted ? 'Provider Accepted!' : 'Job Requested!'}
           </Text>
           <Text style={styles.subtitle}>
-            {isConfirmed 
+            {isConfirmed
               ? 'Your service professional has been notified and is on the way.'
               : isAccepted
               ? 'The provider has accepted your request. Please chat to negotiate timing.'
@@ -194,7 +200,6 @@ export default function BookingSuccessScreen() {
           </Text>
         </Animated.View>
 
-        {/* ── Details card ── */}
         <Animated.View
           style={[styles.card, { opacity: cardOpacity, transform: [{ translateY: cardSlide }] }]}
         >
@@ -208,61 +213,64 @@ export default function BookingSuccessScreen() {
           <View style={styles.divider} />
           <DetailRow label="Est. Cost"   value={estimatedCost} index={3} />
 
-          {etaMinutes != null && (
+          {etaMinutes != null ? (
             <>
               <View style={styles.divider} />
               <DetailRow label="Est. Arrival (ETA)" value={`${etaMinutes} mins`} index={4} />
             </>
-          )}
+          ) : null}
 
-          {confirmationCode && (
+          {confirmationCode ? (
             <>
               <View style={styles.divider} />
               <DetailRow label="Conf. Code" value={confirmationCode} index={etaMinutes != null ? 5 : 4} accent />
             </>
-          )}
+          ) : null}
 
           <View style={[styles.divider, styles.dividerStrong]} />
-          <DetailRow label="Booking ID"  value={bookingIdStr} index={etaMinutes != null ? (confirmationCode ? 6 : 5) : (confirmationCode ? 5 : 4)} accent />
+          <DetailRow
+            label="Booking ID"
+            value={bookingIdStr}
+            index={etaMinutes != null ? (confirmationCode ? 6 : 5) : (confirmationCode ? 5 : 4)}
+            accent
+          />
         </Animated.View>
 
-        {/* ── Status pills ── */}
-        <Animated.View
-          style={[styles.pillsRow, { opacity: cardOpacity }]}
-        >
-          <View style={[styles.pill, styles.pillGreen]}>
-            <Text style={styles.pillText}>✓ Confirmed</Text>
-          </View>
-          <View style={[styles.pill, styles.pillBlue]}>
-            <Text style={styles.pillText}>📱 Notified</Text>
-          </View>
-          <View style={[styles.pill, styles.pillPurple]}>
-            <Text style={styles.pillText}>⏱ On the way</Text>
-          </View>
+        {/* Live status pill — driven by real currentStatus, not static */}
+        <Animated.View style={[styles.statusRow, { opacity: cardOpacity }]}>
+          <StatusBadge status={statusKey} size="md" />
+          {ACTIVE_STATUSES.has(statusKey) ? (
+            <Text style={styles.statusHint}>
+              {isConfirmed
+                ? 'Your provider is on the way'
+                : isAccepted
+                ? 'Tap below to chat and lock in a time'
+                : 'Status updates in real time'}
+            </Text>
+          ) : null}
         </Animated.View>
 
-        {/* ── CTAs ── */}
         <Animated.View style={[styles.ctaWrapper, { opacity: cardOpacity }]}>
           {(isAccepted || isConfirmed) ? (
             <PrimaryButton
-              label={isConfirmed ? "Track Provider Live 🗺️" : "Chat & Negotiate Timing 💬"}
+              label={isConfirmed ? 'Track Provider Live 🗺️' : 'Chat & Negotiate Timing 💬'}
               onPress={() => {
                 if (isConfirmed) {
-                  const providerCoords = resolvedProvider
-                    ? { latitude: resolvedProvider.latitude, longitude: resolvedProvider.longitude }
-                    : { latitude: 33.6844, longitude: 73.0479 };
-                  const userCoords = confirmation?.user_coordinates
-                    ?? { latitude: providerCoords.latitude + 0.015, longitude: providerCoords.longitude + 0.012 };
-                  navigation.navigate('LiveTracking', {
-                    bookingId: bookingIdStr,
-                    providerCoordinates: providerCoords,
-                    userCoordinates: userCoords,
-                    providerName: providerName,
-                  });
+                  navigation.navigate(
+                    'LiveTracking',
+                    buildTrackingRouteParams({
+                      bookingId: bookingIdStr,
+                      providerName,
+                      providerCoordinates: resolvedProvider
+                        ? { latitude: resolvedProvider.latitude, longitude: resolvedProvider.longitude }
+                        : null,
+                      userCoordinates: confirmation?.user_coordinates,
+                    })
+                  );
                 } else {
                   navigation.navigate('Chat', {
                     bookingId: bookingIdStr,
-                    providerName: providerName,
+                    providerName,
                   });
                 }
               }}
@@ -270,7 +278,7 @@ export default function BookingSuccessScreen() {
             />
           ) : (
             <View style={styles.waitingBtn}>
-              <Text style={styles.waitingText}>Waiting for acceptance...</Text>
+              <Text style={styles.waitingText}>Waiting for acceptance…</Text>
             </View>
           )}
           <PrimaryButton
@@ -280,19 +288,21 @@ export default function BookingSuccessScreen() {
           />
         </Animated.View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
+// ─── Styles ──────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: '#0f172a' },
+  root: { flex: 1, backgroundColor: AppColors.bg },
+  flex: { flex: 1 },
   scrollContent: {
-    flexGrow: 1, alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingTop: Platform.OS === 'ios' ? 70 : 50,
-    paddingBottom: 40,
+    flexGrow: 1,
+    alignItems: 'center',
+    paddingHorizontal: Spacing.six,
+    paddingTop: Spacing.six,
+    paddingBottom: Spacing.ten,
   },
 
   blobTop: {
@@ -306,59 +316,81 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(99,102,241,0.05)',
   },
 
-  iconWrapper: { position: 'relative', width: 100, height: 100, alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
+  iconWrapper: {
+    position: 'relative', width: 100, height: 100,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: Spacing.six,
+  },
   glowRing: {
     position: 'absolute',
     width: 110, height: 110, borderRadius: 55,
-    backgroundColor: '#10b981',
+    backgroundColor: AppColors.success,
   },
   iconCircle: {
     width: 80, height: 80, borderRadius: 40,
-    backgroundColor: '#10b981',
+    backgroundColor: AppColors.success,
     alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#10b981', shadowOffset: { width: 0, height: 8 },
+    shadowColor: AppColors.success, shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.6, shadowRadius: 20, elevation: 12,
   },
-  iconEmoji: { color: '#fff', fontSize: 36, fontWeight: '900' },
+  iconEmoji: { color: '#fff', fontSize: 36, fontWeight: '900' as const },
 
-  titleBlock: { alignItems: 'center', marginBottom: 28 },
-  title:      { color: '#f1f5f9', fontSize: 28, fontWeight: '900', textAlign: 'center', marginBottom: 8 },
-  subtitle:   { color: '#64748b', fontSize: 14, textAlign: 'center', lineHeight: 20, paddingHorizontal: 8 },
+  titleBlock: { alignItems: 'center', marginBottom: Spacing.six },
+  title:      { color: AppColors.textPrimary, fontSize: 28, fontWeight: FontWeight.extrabold as '800', textAlign: 'center', marginBottom: Spacing.two },
+  subtitle:   { color: AppColors.textMuted, fontSize: 14, textAlign: 'center', lineHeight: 20, paddingHorizontal: Spacing.two },
 
   card: {
     width: '100%',
-    backgroundColor: 'rgba(30,41,59,0.85)',
-    borderRadius: 20, padding: 20,
-    borderWidth: 1, borderColor: 'rgba(51,65,85,0.7)',
-    marginBottom: 16,
-  },
-  cardLabel: { color: '#334155', fontSize: 10, fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase', textAlign: 'center', marginBottom: 4 },
-
-  divider:       { height: 1, backgroundColor: 'rgba(51,65,85,0.5)' },
-  dividerStrong: { backgroundColor: 'rgba(51,65,85,0.9)', marginVertical: 4 },
-
-  pillsRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginBottom: 24 },
-  pill:     { borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1 },
-  pillGreen:  { backgroundColor: 'rgba(16,185,129,0.1)',  borderColor: 'rgba(16,185,129,0.35)' },
-  pillBlue:   { backgroundColor: 'rgba(99,102,241,0.1)',  borderColor: 'rgba(99,102,241,0.35)' },
-  pillPurple: { backgroundColor: 'rgba(168,85,247,0.1)',  borderColor: 'rgba(168,85,247,0.35)' },
-  pillText:   { fontSize: 11, fontWeight: '700', color: '#94a3b8' },
-
-  ctaWrapper: { width: '100%', gap: 10 },
-  secondaryBtn: {
-    backgroundColor: 'rgba(30,41,59,0.85)',
+    backgroundColor: AppColors.surface,
+    borderRadius: Radius.xl,
+    padding: Spacing.five,
     borderWidth: 1,
-    borderColor: 'rgba(51,65,85,0.7)',
+    borderColor: AppColors.border,
+    marginBottom: Spacing.four,
+  },
+  cardLabel: {
+    color: AppColors.textDisabled,
+    fontSize: 11,
+    fontWeight: FontWeight.bold as '700',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    textAlign: 'center',
+    marginBottom: Spacing.one,
+  },
+
+  divider:       { height: 1, backgroundColor: AppColors.border },
+  dividerStrong: { backgroundColor: AppColors.overlay, marginVertical: 2 },
+
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    marginBottom: Spacing.six,
+  },
+  statusHint: {
+    color: AppColors.textMuted,
+    fontSize: 12,
+    textAlign: 'center',
+    maxWidth: 220,
+  },
+
+  ctaWrapper: { width: '100%', gap: Spacing.two },
+  secondaryBtn: {
+    backgroundColor: AppColors.surface,
+    borderWidth: 1,
+    borderColor: AppColors.border,
   },
   waitingBtn: {
-    backgroundColor: 'rgba(51,65,85,0.5)',
-    paddingVertical: 16,
-    borderRadius: 14,
+    backgroundColor: AppColors.surface,
+    paddingVertical: Spacing.four,
+    borderRadius: Radius.md,
     alignItems: 'center',
   },
   waitingText: {
-    color: '#94a3b8',
-    fontWeight: 'bold',
-    fontSize: 16,
+    color: AppColors.textMuted,
+    fontWeight: FontWeight.bold as '700',
+    fontSize: 15,
   },
 });

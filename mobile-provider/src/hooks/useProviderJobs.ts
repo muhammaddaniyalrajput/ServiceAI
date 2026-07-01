@@ -58,9 +58,10 @@ export const useProviderJobs = (providerId: string | null) => {
             user_id: data.user_id || '',
             status: data.status || 'pending_acceptance',
             service_type: data.intent?.service_type || 'Service',
-            customer_name: data.user_name || 'Customer',
-            customer_phone: data.user_phone || '',
-            customer_coordinates: data.user_coordinates || {
+            customer_name: data.customer_name || data.user_name || 'Customer',
+            customer_phone: data.customer_phone || data.user_phone || '',
+            customer_address: data.customer_address || data.intent?.location || 'Location',
+            customer_coordinates: data.customer_coordinates || data.user_coordinates || {
               latitude: 0,
               longitude: 0,
             },
@@ -115,9 +116,10 @@ export const useSingleJobListener = (bookingId: string | null) => {
             user_id: data.user_id || '',
             status: data.status || 'pending_acceptance',
             service_type: data.intent?.service_type || 'Service',
-            customer_name: data.user_name || 'Customer',
-            customer_phone: data.user_phone || '',
-            customer_coordinates: data.user_coordinates || {
+            customer_name: data.customer_name || data.user_name || 'Customer',
+            customer_phone: data.customer_phone || data.user_phone || '',
+            customer_address: data.customer_address || data.intent?.location || 'Location',
+            customer_coordinates: data.customer_coordinates || data.user_coordinates || {
               latitude: 0,
               longitude: 0,
             },

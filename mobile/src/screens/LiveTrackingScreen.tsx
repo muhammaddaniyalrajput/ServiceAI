@@ -1,12 +1,15 @@
 /**
  * LiveTrackingScreen — Real-time provider tracking with map.
  *
- * Features:
- * - MapView with two markers (customer pin + animated provider pin)
- * - Real-time Firestore polling for provider coordinates
- * - Status progress bar (accepted → on the way → arrived → in progress → completed)
- * - Integrated AgentLogViewer for live AI reasoning traces
- * - Premium dark-mode styling
+ * KaamEasy AI customer view: status progress, ETA banner, dark map with both
+ * pins, live agent reasoning trace, and a FAB to reopen the negotiation chat.
+ *
+ * Refactor notes (Phase 3 de-clutter):
+ *   - Wrapped in `SafeAreaView` so the top header / progress never clip.
+ *   - Inline `StatusProgressBar` replaced with the shared `<ProgressSteps>`.
+ *   - Status colors pulled from theme tokens (no hardcoded hex).
+ *   - `etaBanner` color pulled from `state.*` token when relevant.
+ *   - Dropped the hardcoded `paddingTop: Platform.OS === 'ios' ? 70 : 50` hack.
  */
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
@@ -15,27 +18,32 @@ import {
   ScrollView,
   StyleSheet,
   Animated,
-  Platform,
   StatusBar,
   ActivityIndicator,
+  TouchableOpacity,
 } from 'react-native';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import MapView, { Marker, PROVIDER_GOOGLE } from '../components/MapViewWrapper';
 import { useRoute } from '@react-navigation/native';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getBookingTracking } from '../services/api';
 import { AgentLogViewer } from '../components/AgentLogViewer';
 import { useBookingStore } from '../store/bookingStore';
+import NegotiationChatSheet from '../components/ui/NegotiationChatSheet';
+import { AppColors, FontWeight, Radius, Spacing } from '../constants/theme';
+import { ProgressSteps, type ProgressStep } from '../components/ui/ProgressSteps';
+import { StatusBadge, type StatusKey } from '../components/ui/StatusBadge';
 
 // ─── Status step configuration ────────────────────────────────────────────────
 
-const STATUS_STEPS = [
-  { key: 'confirmed',   label: 'Confirmed',   emoji: '✓' },
-  { key: 'accepted',    label: 'Accepted',     emoji: '👤' },
-  { key: 'on_the_way',  label: 'On the Way',   emoji: '🚗' },
-  { key: 'arrived',     label: 'Arrived',       emoji: '📍' },
-  { key: 'in_progress', label: 'Working',       emoji: '🔧' },
-  { key: 'completed',   label: 'Completed',     emoji: '🎉' },
+const STATUS_STEPS: ProgressStep[] = [
+  { key: 'accepted',    label: 'Accepted',  glyph: '✓' },
+  { key: 'confirmed',   label: 'Confirmed', glyph: '✓' },
+  { key: 'on_the_way',  label: 'On the Way', glyph: '🚗' },
+  { key: 'arrived',     label: 'Arrived',   glyph: '📍' },
+  { key: 'in_progress', label: 'Working',   glyph: '🔧' },
+  { key: 'completed',   label: 'Completed', glyph: '🎉' },
 ];
 
 function getStatusIndex(status: string): number {
@@ -43,88 +51,17 @@ function getStatusIndex(status: string): number {
   return idx >= 0 ? idx : 0;
 }
 
-function getStatusColor(status: string): string {
-  switch (status) {
-    case 'completed':   return '#10b981';
-    case 'arrived':
-    case 'in_progress': return '#f59e0b';
-    case 'on_the_way':  return '#3b82f6';
-    case 'accepted':    return '#8b5cf6';
-    default:            return '#6366f1';
-  }
+function getStatusToken(status: string): keyof typeof AppColors.state {
+  if (status === 'completed') return 'success';
+  if (status === 'arrived' || status === 'in_progress') return 'warning';
+  if (status === 'on_the_way') return 'info';
+  if (status === 'accepted') return 'info';
+  return 'info';
 }
 
-// ─── Status progress bar component ────────────────────────────────────────────
-
-const StatusProgressBar: React.FC<{ currentStatus: string }> = ({ currentStatus }) => {
-  const currentIdx = getStatusIndex(currentStatus);
-  const color = getStatusColor(currentStatus);
-
-  return (
-    <View style={progressStyles.container}>
-      <View style={progressStyles.stepsRow}>
-        {STATUS_STEPS.map((step, idx) => {
-          const isCompleted = idx <= currentIdx;
-          const isCurrent = idx === currentIdx;
-          return (
-            <View key={step.key} style={progressStyles.stepWrapper}>
-              <View
-                style={[
-                  progressStyles.dot,
-                  isCompleted && { backgroundColor: color, borderColor: color },
-                  isCurrent && progressStyles.dotCurrent,
-                ]}
-              >
-                <Text style={[progressStyles.dotEmoji, !isCompleted && { opacity: 0.3 }]}>
-                  {step.emoji}
-                </Text>
-              </View>
-              <Text
-                style={[
-                  progressStyles.label,
-                  isCompleted && { color: '#e2e8f0' },
-                  isCurrent && { color, fontWeight: '800' },
-                ]}
-                numberOfLines={1}
-              >
-                {step.label}
-              </Text>
-              {idx < STATUS_STEPS.length - 1 && (
-                <View
-                  style={[
-                    progressStyles.connector,
-                    isCompleted && { backgroundColor: color },
-                  ]}
-                />
-              )}
-            </View>
-          );
-        })}
-      </View>
-    </View>
-  );
-};
-
-const progressStyles = StyleSheet.create({
-  container: { paddingHorizontal: 12, paddingVertical: 14 },
-  stepsRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  stepWrapper: { alignItems: 'center', flex: 1, position: 'relative' },
-  dot: {
-    width: 32, height: 32, borderRadius: 16,
-    backgroundColor: '#1e293b', borderWidth: 2, borderColor: '#334155',
-    alignItems: 'center', justifyContent: 'center', marginBottom: 4,
-  },
-  dotCurrent: {
-    shadowColor: '#6366f1', shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6, shadowRadius: 8, elevation: 6,
-  },
-  dotEmoji: { fontSize: 13 },
-  label: { color: '#475569', fontSize: 9, fontWeight: '600', textAlign: 'center' },
-  connector: {
-    position: 'absolute', top: 15, left: '65%', right: '-35%',
-    height: 2, backgroundColor: '#1e293b', zIndex: -1,
-  },
-});
+function getStatusColor(status: string): string {
+  return AppColors.state[getStatusToken(status)].text;
+}
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
@@ -150,8 +87,8 @@ export default function LiveTrackingScreen() {
   const [providerPos, setProviderPos] = useState(safeProviderCoords);
   const [currentStatus, setCurrentStatus] = useState('confirmed');
   const [etaMinutes, setEtaMinutes] = useState<number | null>(null);
+  const [chatVisible, setChatVisible] = useState(false);
 
-  // Entrance animation
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
@@ -162,7 +99,6 @@ export default function LiveTrackingScreen() {
     ]).start();
   }, []);
 
-  // Poll backend for tracking updates
   const pollTracking = useCallback(async () => {
     if (!bookingId) return;
     try {
@@ -174,7 +110,7 @@ export default function LiveTrackingScreen() {
         if (data.status) {
           setCurrentStatus(data.status);
           if (data.status === 'completed') {
-            setStatus('confirmed'); // Reset store status
+            setStatus('confirmed');
           }
         }
         if (data.eta_minutes != null || data.simulation_eta_minutes != null) {
@@ -184,13 +120,12 @@ export default function LiveTrackingScreen() {
     } catch (err) {
       console.warn('[LiveTracking] Poll error:', err);
     }
-  }, [bookingId]);
+  }, [bookingId, setStatus]);
 
   useEffect(() => {
     if (!bookingId) return;
 
     if (db) {
-      // Use Firestore real-time listener for instant status/coordinate updates
       const docRef = doc(db, 'bookings', bookingId);
       const unsubscribe = onSnapshot(
         docRef,
@@ -204,7 +139,7 @@ export default function LiveTrackingScreen() {
               if (data.status) {
                 setCurrentStatus(data.status);
                 if (data.status === 'completed') {
-                  setStatus('confirmed'); // Reset store status
+                  setStatus('confirmed');
                 }
               }
               if (data.simulation_eta_minutes != null || data.eta_minutes != null) {
@@ -219,14 +154,12 @@ export default function LiveTrackingScreen() {
       );
       return () => unsubscribe();
     } else {
-      // Fallback to active polling if Firestore configuration is mocked/unavailable
-      pollTracking(); // Initial fetch
+      pollTracking();
       const interval = setInterval(pollTracking, 3000);
       return () => clearInterval(interval);
     }
   }, [bookingId, pollTracking, setStatus]);
 
-  // Calculate map region to fit both markers
   const midLat = (safeUserCoords.latitude + providerPos.latitude) / 2;
   const midLng = (safeUserCoords.longitude + providerPos.longitude) / 2;
   const latDelta = Math.abs(safeUserCoords.latitude - providerPos.latitude) * 2.2 + 0.008;
@@ -234,26 +167,35 @@ export default function LiveTrackingScreen() {
 
   const isCompleted = currentStatus === 'completed';
   const statusColor = getStatusColor(currentStatus);
+  const statusToken = getStatusToken(currentStatus);
+
+  const openChat = () => setChatVisible(true);
+  const closeChat = () => setChatVisible(false);
+
+  const statusKey = (currentStatus as StatusKey);
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
+    <SafeAreaView style={styles.root} edges={['top']}>
+      <StatusBar barStyle="light-content" backgroundColor={AppColors.bg} />
 
       <ScrollView
         style={styles.flex}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Status Bar ── */}
+        {/* ── Status card ── */}
         <Animated.View style={[styles.statusCard, { opacity: fadeAnim }]}>
-          <StatusProgressBar currentStatus={currentStatus} />
+          <ProgressSteps
+            steps={STATUS_STEPS}
+            current={getStatusIndex(currentStatus)}
+            color={statusColor}
+          />
 
-          {/* ETA / Status message */}
-          <View style={[styles.etaBanner, { borderColor: statusColor + '40' }]}>
-            <Text style={[styles.etaEmoji]}>
+          <View style={[styles.etaBanner, { borderColor: AppColors.state[statusToken].border }]}>
+            <Text style={styles.etaEmoji}>
               {isCompleted ? '🎉' : currentStatus === 'on_the_way' ? '🚗' : '⏱'}
             </Text>
-            <View>
+            <View style={styles.flex}>
               <Text style={[styles.etaTitle, { color: statusColor }]}>
                 {isCompleted
                   ? 'Service Completed!'
@@ -265,14 +207,17 @@ export default function LiveTrackingScreen() {
                   ? `${providerName} is on the way`
                   : currentStatus === 'accepted'
                   ? `${providerName} accepted!`
+                  : currentStatus === 'confirmed'
+                  ? 'Booking Confirmed! Provider preparing...'
                   : 'Processing booking...'}
               </Text>
-              {etaMinutes != null && !isCompleted && currentStatus === 'on_the_way' && (
+              {etaMinutes != null && !isCompleted && currentStatus === 'on_the_way' ? (
                 <Text style={styles.etaSub}>
                   Estimated arrival: ~{etaMinutes} min
                 </Text>
-              )}
+              ) : null}
             </View>
+            <StatusBadge status={statusKey} size="sm" />
           </View>
         </Animated.View>
 
@@ -283,11 +228,14 @@ export default function LiveTrackingScreen() {
             { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
           ]}
         >
-          <Text style={styles.sectionLabel}>LIVE TRACKING</Text>
-          <View style={styles.mapWrapper}>
+          <View style={styles.mapHeader}>
+            <Text style={styles.sectionLabel}>LIVE TRACKING</Text>
+            <StatusBadge status={statusKey} size="sm" />
+          </View>
+          <View style={styles.mapWrapper} pointerEvents="box-none">
             <MapView
               style={styles.map}
-              provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+              provider={PROVIDER_GOOGLE}
               initialRegion={{
                 latitude: midLat,
                 longitude: midLng,
@@ -301,49 +249,56 @@ export default function LiveTrackingScreen() {
                 longitudeDelta: lngDelta,
               }}
               customMapStyle={darkMapStyle}
-              scrollEnabled={true}
-              zoomEnabled={true}
+              scrollEnabled
+              zoomEnabled
               rotateEnabled={false}
             >
-              {/* Customer marker */}
               <Marker
                 coordinate={safeUserCoords}
                 title="Your Location"
-                pinColor="#6366f1"
+                pinColor={AppColors.primary}
               />
-
-              {/* Provider marker */}
               <Marker
                 key={`provider-${providerPos.latitude}-${providerPos.longitude}`}
                 coordinate={providerPos}
                 title={providerName || 'Provider'}
                 description={currentStatus === 'on_the_way' ? 'En route to you' : currentStatus}
-                pinColor="#10b981"
+                pinColor={AppColors.success}
               />
             </MapView>
 
-            {/* Map overlay legend */}
             <View style={styles.legendRow}>
               <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: '#6366f1' }]} />
+                <View style={[styles.legendDot, { backgroundColor: AppColors.primary }]} />
                 <Text style={styles.legendText}>You</Text>
               </View>
               <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: '#10b981' }]} />
+                <View style={[styles.legendDot, { backgroundColor: AppColors.success }]} />
                 <Text style={styles.legendText}>{providerName || 'Provider'}</Text>
               </View>
             </View>
+
+            <TouchableOpacity style={styles.chatFab} activeOpacity={0.88} onPress={openChat}>
+              <Text style={styles.chatFabIcon}>💬</Text>
+              <Text style={styles.chatFabText}>Open Live Chat</Text>
+            </TouchableOpacity>
           </View>
         </Animated.View>
 
         {/* ── Agent Reasoning Trace ── */}
-        <Animated.View
-          style={[styles.logsSection, { opacity: fadeAnim }]}
-        >
+        <Animated.View style={[styles.logsSection, { opacity: fadeAnim }]}>
           <AgentLogViewer bookingId={bookingId} />
         </Animated.View>
       </ScrollView>
-    </View>
+
+      <NegotiationChatSheet
+        visible={chatVisible}
+        bookingId={bookingId}
+        providerName={providerName}
+        currentStatus={currentStatus}
+        onClose={closeChat}
+      />
+    </SafeAreaView>
   );
 }
 
@@ -364,60 +319,97 @@ const darkMapStyle = [
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f172a' },
+  root: { flex: 1, backgroundColor: AppColors.bg },
   flex: { flex: 1 },
-  scrollContent: { paddingBottom: 32 },
+  scrollContent: { paddingBottom: Spacing.eight },
 
   statusCard: {
-    marginHorizontal: 16,
-    marginTop: 12,
-    backgroundColor: 'rgba(30,41,59,0.85)',
-    borderRadius: 20,
+    marginHorizontal: Spacing.four,
+    marginTop: Spacing.three,
+    backgroundColor: AppColors.surface,
+    borderRadius: Radius.xl,
     borderWidth: 1,
-    borderColor: 'rgba(51,65,85,0.7)',
+    borderColor: AppColors.border,
     overflow: 'hidden',
   },
-
   etaBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingHorizontal: 16, paddingVertical: 14,
-    borderTopWidth: 1, borderTopColor: 'rgba(51,65,85,0.5)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.three,
+    borderTopWidth: 1,
+    borderTopColor: AppColors.border,
   },
-  etaEmoji: { fontSize: 26 },
-  etaTitle: { color: '#e2e8f0', fontSize: 14, fontWeight: '700' },
-  etaSub:   { color: '#64748b', fontSize: 12, marginTop: 2 },
+  etaEmoji: { fontSize: 24 },
+  etaTitle: { fontSize: 14, fontWeight: FontWeight.bold as '700' },
+  etaSub:   { color: AppColors.textMuted, fontSize: 12, marginTop: 2 },
 
   mapCard: {
-    marginHorizontal: 16,
-    marginTop: 14,
-    backgroundColor: 'rgba(30,41,59,0.85)',
-    borderRadius: 20,
+    marginHorizontal: Spacing.four,
+    marginTop: Spacing.three,
+    backgroundColor: AppColors.surface,
+    borderRadius: Radius.xl,
     borderWidth: 1,
-    borderColor: 'rgba(51,65,85,0.7)',
+    borderColor: AppColors.border,
     overflow: 'hidden',
-    padding: 14,
+    padding: Spacing.three,
+  },
+  mapHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.two,
   },
   sectionLabel: {
-    color: '#475569', fontSize: 10, fontWeight: '700',
-    letterSpacing: 1.5, textTransform: 'uppercase',
-    marginBottom: 10,
+    color: AppColors.textMuted,
+    fontSize: 11,
+    fontWeight: FontWeight.bold as '700',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
   },
-  mapWrapper: { borderRadius: 14, overflow: 'hidden', position: 'relative' },
+  mapWrapper: { borderRadius: Radius.md, overflow: 'hidden', position: 'relative' },
   map: { width: '100%', height: 280 },
 
   legendRow: {
-    position: 'absolute', bottom: 10, left: 10,
-    flexDirection: 'row', gap: 12,
-    backgroundColor: 'rgba(15,23,42,0.85)',
-    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
-    borderWidth: 1, borderColor: 'rgba(51,65,85,0.6)',
+    position: 'absolute',
+    bottom: 10,
+    left: 10,
+    flexDirection: 'row',
+    gap: Spacing.three,
+    backgroundColor: AppColors.bg,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderWidth: 1,
+    borderColor: AppColors.border,
   },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   legendDot:  { width: 8, height: 8, borderRadius: 4 },
-  legendText: { color: '#94a3b8', fontSize: 11, fontWeight: '600' },
+  legendText: { color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.semibold as '600' },
+
+  chatFab: {
+    position: 'absolute',
+    right: 10,
+    bottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    backgroundColor: AppColors.primary,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    shadowColor: '#000',
+    shadowOpacity: 0.24,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
+  },
+  chatFabIcon: { fontSize: 15 },
+  chatFabText: { color: '#fff', fontSize: 12, fontWeight: FontWeight.extrabold as '800' },
 
   logsSection: {
-    marginHorizontal: 16,
-    marginTop: 14,
+    marginHorizontal: Spacing.four,
+    marginTop: Spacing.three,
   },
 });

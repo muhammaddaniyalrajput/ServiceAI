@@ -1,5 +1,5 @@
 """
-Provider API routes for the ServiceFlow AI provider mobile app.
+Provider API routes for the KaamEasy AI provider mobile app.
 
 Endpoints:
   POST   /api/v1/provider/register              — Register a new service provider
@@ -30,9 +30,11 @@ from app.models.schemas import (
     BookingStatus,
 )
 from app.services import firebase_db as db
-from datetime import datetime
+from datetime import datetime, timezone
 
-logger = logging.getLogger("serviceflow")
+_utcnow = lambda: datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+logger = logging.getLogger("kaameasy")
 
 router = APIRouter()
 
@@ -55,7 +57,7 @@ def booking_to_provider_job(booking_doc: dict) -> ProviderJob:
         customer_phone=booking_doc.get("user_phone", ""),
         customer_coordinates=booking_doc.get("user_coordinates", {"latitude": 0, "longitude": 0}),
         location_description=intent.get("location", ""),
-        requested_at=booking_doc.get("created_at", datetime.utcnow().isoformat() + "Z"),
+        requested_at=booking_doc.get("created_at", _utcnow()),
         urgency=intent.get("urgency", "medium"),
         total_estimated_cost=booking_data.get("total_estimated_cost", 0),
         eta_minutes=booking_data.get("eta_minutes", 0),
@@ -76,7 +78,7 @@ def provider_doc_to_profile(provider_doc: dict) -> ProviderProfile:
         is_available=provider_doc.get("is_available", True),
         current_coordinates=provider_doc.get("current_coordinates", {}),
         fcm_token=provider_doc.get("fcm_token"),
-        updated_at=provider_doc.get("updated_at", datetime.utcnow().isoformat() + "Z"),
+        updated_at=provider_doc.get("updated_at", _utcnow()),
         city=provider_doc.get("city"),
         address=provider_doc.get("address"),
     )
@@ -130,9 +132,9 @@ async def register_provider(
             profile=profile,
             message=f"Welcome {payload.name}! Your provider profile has been created.",
         )
-    except Exception as exc:
-        logger.error(f"Provider registration failed: {exc}")
-        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception:
+        logger.exception("Provider registration failed")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -176,9 +178,9 @@ async def get_current_provider(
             raise HTTPException(status_code=404, detail="Provider profile not found in mock store.")
     except HTTPException:
         raise
-    except Exception as exc:
-        logger.error(f"Failed to fetch profile for user {uid}: {exc}")
-        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception:
+        logger.exception("Failed to fetch profile for user %s", uid)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -214,9 +216,9 @@ async def update_profile(
         return provider_doc_to_profile(updated)
     except HTTPException:
         raise
-    except Exception as exc:
-        logger.error(f"Failed to update profile for provider {provider_id}: {exc}")
-        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception:
+        logger.exception("Failed to update profile for provider %s", provider_id)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -251,13 +253,13 @@ async def update_provider_status(
             success=True,
             provider_id=provider_id,
             is_available=payload.is_available,
-            updated_at=datetime.utcnow().isoformat() + "Z",
+            updated_at=_utcnow(),
         )
     except HTTPException:
         raise
-    except Exception as exc:
-        logger.error(f"Status update failed for {provider_id}: {exc}")
-        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception:
+        logger.exception("Status update failed for provider %s", provider_id)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -301,9 +303,9 @@ async def update_provider_location(
         )
     except HTTPException:
         raise
-    except Exception as exc:
-        logger.error(f"Location update failed for {provider_id}: {exc}")
-        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception:
+        logger.exception("Location update failed for provider %s", provider_id)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -343,9 +345,9 @@ async def get_provider_jobs(
         )
     except HTTPException:
         raise
-    except Exception as exc:
-        logger.error(f"Job retrieval failed for {provider_id}: {exc}")
-        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception:
+        logger.exception("Job retrieval failed for provider %s", provider_id)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -412,9 +414,9 @@ async def respond_to_job(
         )
     except HTTPException:
         raise
-    except Exception as exc:
-        logger.error(f"Job response failed: {exc}")
-        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception:
+        logger.exception("Job response failed for booking %s", booking_id)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -461,9 +463,9 @@ async def accept_job(
         )
     except HTTPException:
         raise
-    except Exception as exc:
-        logger.error(f"Failed to accept job {booking_id}: {exc}")
-        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception:
+        logger.exception("Failed to accept job %s", booking_id)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -530,10 +532,10 @@ async def update_job_status(
             success=True,
             booking_id=booking_id,
             status=payload.status,
-            updated_at=datetime.utcnow().isoformat() + "Z",
+            updated_at=_utcnow(),
         )
     except HTTPException:
         raise
-    except Exception as exc:
-        logger.error(f"Job status update failed: {exc}")
-        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception:
+        logger.exception("Job status update failed for booking %s", booking_id)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")

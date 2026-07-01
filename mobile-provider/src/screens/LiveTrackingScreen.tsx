@@ -19,9 +19,11 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Linking,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from '@/components/MapViewWrapper';
 import { useGPSTracking } from '@/hooks/useGPSTracking';
 import { useSingleJobListener } from '@/hooks/useProviderJobs';
 import { useProviderStore } from '@/store/providerStore';
@@ -31,6 +33,7 @@ export default function LiveTrackingScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const booking_id = typeof params.booking_id === 'string' ? params.booking_id : '';
+  const insets = useSafeAreaInsets();
 
   const { job, loading: jobLoading } = useSingleJobListener(booking_id);
   const currentLocation = useProviderStore((s) => s.currentLocation);
@@ -44,7 +47,14 @@ export default function LiveTrackingScreen() {
     interval: 10000, // Update every 10 seconds
   });
 
-  const mapRef = useRef<MapView>(null);
+  const mapRef = useRef<any>(null);
+
+  const customerCoords = job?.customer_coordinates ?? { latitude: 0, longitude: 0 };
+  const fallbackProviderCoords = {
+    latitude: customerCoords.latitude + 0.01,
+    longitude: customerCoords.longitude + 0.01,
+  };
+  const providerCoords = currentLocation ?? fallbackProviderCoords;
 
   // Calculate distance (simple Haversine formula)
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -61,12 +71,12 @@ export default function LiveTrackingScreen() {
     return R * c; // Distance in km
   };
 
-  const distance = currentLocation && job
+  const distance = job
     ? calculateDistance(
-        currentLocation.latitude,
-        currentLocation.longitude,
-        job.customer_coordinates.latitude,
-        job.customer_coordinates.longitude
+        providerCoords.latitude,
+        providerCoords.longitude,
+        customerCoords.latitude,
+        customerCoords.longitude
       )
     : null;
 
@@ -75,16 +85,16 @@ export default function LiveTrackingScreen() {
 
   // Zoom to show both provider and customer
   useEffect(() => {
-    if (mapRef.current && currentLocation && job) {
+    if (mapRef.current && job) {
       mapRef.current.fitToCoordinates(
         [
           {
-            latitude: currentLocation.latitude,
-            longitude: currentLocation.longitude,
+            latitude: providerCoords.latitude,
+            longitude: providerCoords.longitude,
           },
           {
-            latitude: job.customer_coordinates.latitude,
-            longitude: job.customer_coordinates.longitude,
+            latitude: customerCoords.latitude,
+            longitude: customerCoords.longitude,
           },
         ],
         {
@@ -95,12 +105,20 @@ export default function LiveTrackingScreen() {
     }
   }, [currentLocation, job]);
 
-  const handleStatusUpdate = async (newStatus: 'arrived' | 'in_progress') => {
+  const handleStatusUpdate = async (newStatus: 'on_the_way' | 'arrived' | 'in_progress' | 'completed') => {
     setUpdating(true);
     try {
       await providerAPI.updateJobStatus(booking_id, newStatus);
       updateJobStatus(booking_id, newStatus);
-      Alert.alert('Success', newStatus === 'arrived' ? 'Marked as arrived!' : 'Work started!');
+      
+      const successMessages = {
+        on_the_way: 'Started journey!',
+        arrived: 'Marked as arrived!',
+        in_progress: 'Work started!',
+        completed: 'Job completed!',
+      };
+      
+      Alert.alert('Success', successMessages[newStatus]);
     } catch (err: any) {
       Alert.alert('Error', err.message);
     } finally {
@@ -117,7 +135,7 @@ export default function LiveTrackingScreen() {
     );
   }
 
-  if (!job || !currentLocation) {
+  if (!job) {
     return (
       <View style={styles.errorContainer}>
         <Text style={styles.errorText}>Unable to load tracking data</Text>
@@ -128,8 +146,24 @@ export default function LiveTrackingScreen() {
     );
   }
 
-  const nextAction = job.status === 'on_the_way' ? 'arrived' : 'in_progress';
-  const actionLabel = job.status === 'on_the_way' ? '📍 I Have Arrived' : '🔧 Start Work';
+  const getNextStatus = () => {
+    const transitions = {
+      confirmed: 'on_the_way',
+      on_the_way: 'arrived',
+      arrived: 'in_progress',
+      in_progress: 'completed',
+    };
+    return transitions[job.status as keyof typeof transitions];
+  };
+
+  const nextAction = getNextStatus();
+  const statusLabels = {
+    on_the_way: '▶️ Start Journey',
+    arrived: '📍 I Have Arrived',
+    in_progress: '🔧 Start Work',
+    completed: '✓ Complete Job',
+  };
+  const actionLabel = statusLabels[nextAction as keyof typeof statusLabels] || 'Update Status';
 
   return (
     <View style={styles.container}>
@@ -139,8 +173,8 @@ export default function LiveTrackingScreen() {
         style={styles.map}
         provider={PROVIDER_GOOGLE}
         initialRegion={{
-          latitude: currentLocation.latitude,
-          longitude: currentLocation.longitude,
+          latitude: providerCoords.latitude,
+          longitude: providerCoords.longitude,
           latitudeDelta: 0.05,
           longitudeDelta: 0.05,
         }}
@@ -148,8 +182,8 @@ export default function LiveTrackingScreen() {
         {/* Provider location (blue marker) */}
         <Marker
           coordinate={{
-            latitude: currentLocation.latitude,
-            longitude: currentLocation.longitude,
+            latitude: providerCoords.latitude,
+            longitude: providerCoords.longitude,
           }}
           title="Your Location"
           description="You are here"
@@ -159,8 +193,8 @@ export default function LiveTrackingScreen() {
         {/* Customer location (destination marker) */}
         <Marker
           coordinate={{
-            latitude: job.customer_coordinates.latitude,
-            longitude: job.customer_coordinates.longitude,
+            latitude: customerCoords.latitude,
+            longitude: customerCoords.longitude,
           }}
           title={job.customer_name}
           description={job.location_description}
@@ -171,12 +205,12 @@ export default function LiveTrackingScreen() {
         <Polyline
           coordinates={[
             {
-              latitude: currentLocation.latitude,
-              longitude: currentLocation.longitude,
+              latitude: providerCoords.latitude,
+              longitude: providerCoords.longitude,
             },
             {
-              latitude: job.customer_coordinates.latitude,
-              longitude: job.customer_coordinates.longitude,
+              latitude: customerCoords.latitude,
+              longitude: customerCoords.longitude,
             },
           ]}
           strokeColor="#00bfff"
@@ -185,14 +219,17 @@ export default function LiveTrackingScreen() {
         />
       </MapView>
 
-      {/* Tracking Status Bar */}
-      <View style={styles.statusBar}>
+      {/* Tracking Status Bar — X1: positioned below notch via insets */}
+      <View style={[styles.statusBar, { top: insets.top + 8 }]}>
         <View style={styles.statusContent}>
           <Text style={styles.statusLabel}>Status: {job.status.replace(/_/g, ' ')}</Text>
           <Text style={styles.trackingStatus}>
             {isTracking ? '🟢 Tracking' : '⚪ Not Tracking'}
           </Text>
         </View>
+        {!currentLocation && !trackingError && (
+          <Text style={styles.locationHint}>Waiting for GPS fix...</Text>
+        )}
         {trackingError && <Text style={styles.errorText}>{trackingError}</Text>}
       </View>
 
@@ -242,8 +279,20 @@ export default function LiveTrackingScreen() {
         </View>
       </View>
 
-      {/* Call Customer Button */}
-      <TouchableOpacity style={styles.callButton}>
+      {/* Call Customer Button — X3: wired to phone dialer */}
+      <TouchableOpacity
+        style={styles.callButton}
+        onPress={() => {
+          const phone = job?.customer_phone;
+          if (phone) {
+            Linking.openURL(`tel:${phone}`).catch(() =>
+              Alert.alert('Error', 'Unable to open the phone dialer.')
+            );
+          } else {
+            Alert.alert('No Phone Number', 'Customer phone number is not available.');
+          }
+        }}
+      >
         <Text style={styles.callButtonText}>📞 Call Customer</Text>
       </TouchableOpacity>
     </View>
@@ -279,6 +328,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 24,
   },
+  locationHint: {
+    color: '#aaa',
+    fontSize: 12,
+    marginTop: 4,
+  },
   backButton: {
     backgroundColor: '#00bfff',
     paddingHorizontal: 24,
@@ -291,7 +345,7 @@ const styles = StyleSheet.create({
   },
   statusBar: {
     position: 'absolute',
-    top: 50,
+    top: 0,         // will be overridden inline with insets.top
     left: 16,
     right: 16,
     backgroundColor: 'rgba(42, 42, 42, 0.95)',

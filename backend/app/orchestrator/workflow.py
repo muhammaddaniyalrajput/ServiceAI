@@ -1,7 +1,7 @@
 """
 Antigravity Orchestrator — The central conductor.
 
-This module defines the execution DAG for the ServiceFlow AI multi-agent pipeline.
+This module defines the execution DAG for the KaamEasy AI multi-agent pipeline.
 
 DAG:
   User Request
@@ -58,7 +58,7 @@ from app.models.schemas            import (
     BookingStatus,
 )
 
-logger = logging.getLogger("serviceflow")
+logger = logging.getLogger("kaameasy")
 
 # Initialize global Antigravity client
 client = AntigravityClient(api_key=settings.ANTIGRAVITY_API_KEY)
@@ -139,7 +139,7 @@ def wrap_schedule_followup(dep_results: dict, context: dict):
 
 
 def get_pipeline_dag() -> AntigravityDAG:
-    dag = AntigravityDAG("serviceflow_booking_pipeline", client)
+    dag = AntigravityDAG("kaameasy_booking_pipeline", client)
     dag.add_node("intent_extraction", wrap_intent_extraction)
     dag.add_node("provider_discovery", wrap_provider_discovery, depends_on=["intent_extraction"])
     dag.add_node("provider_ranking", wrap_provider_ranking, depends_on=["provider_discovery"])
@@ -257,6 +257,10 @@ def orchestrate_book_service(
     provider_id: str,
     intent: IntentOutput,
     ranked_providers: list,
+    customer_name: str,
+    customer_phone: str,
+    customer_address: str,
+    customer_coordinates: dict,
     device_token: str | None = None,
 ) -> BookServiceResponse:
     """
@@ -280,6 +284,10 @@ def orchestrate_book_service(
         "booking_id": booking_id,
         "intent": intent,
         "selected_provider": selected_provider,
+        "customer_name": customer_name,
+        "customer_phone": customer_phone,
+        "customer_address": customer_address,
+        "customer_coordinates": customer_coordinates,
         "device_token": device_token
     }
 
@@ -321,6 +329,12 @@ def orchestrate_book_service(
             "provider": selected_provider.model_dump(),
             "scheduled_at": booking.scheduled_at,
             "total_estimated_cost": booking.total_estimated_cost,
+            "customer_name": customer_name,
+            "customer_phone": customer_phone,
+            "customer_address": customer_address,
+            "customer_coordinates": customer_coordinates,
+            # Mirror under the legacy key the simulation/tracking layer reads.
+            "user_coordinates": customer_coordinates,
         })
         db.save_agent_logs(booking_id, all_logs)
         db.save_agent_trace(booking_id, all_logs)
@@ -351,6 +365,13 @@ def orchestrate_book_service(
             "provider": selected_provider.model_dump(),
             "scheduled_at": booking.scheduled_at,
             "total_estimated_cost": booking.total_estimated_cost,
+            # Persist customer info on the simulated path too, so the booking
+            # doc, live tracking, and provider simulation all have it.
+            "customer_name": customer_name,
+            "customer_phone": customer_phone,
+            "customer_address": customer_address,
+            "customer_coordinates": customer_coordinates,
+            "user_coordinates": customer_coordinates,
         })
         db.save_agent_logs(booking_id, all_logs)
         db.save_agent_trace(booking_id, all_logs)

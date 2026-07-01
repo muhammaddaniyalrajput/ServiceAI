@@ -22,9 +22,14 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RouteProp } from '@react-navigation/native';
+import { RootStackParamList } from '../types/navigation';
+import { doc, getDoc } from 'firebase/firestore';
 import { findProviders, bookService } from '../services/api';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
 import { useBookingStore } from '../store/bookingStore';
+import { auth, db } from '../firebase';
 
 // ─── Skeleton card ─────────────────────────────────────────────────────────────
 
@@ -171,8 +176,8 @@ const ProviderCard: React.FC<{
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function ProvidersScreen() {
-  const navigation = useNavigation<any>();
-  const route      = useRoute<any>();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const route      = useRoute<RouteProp<RootStackParamList, 'Providers'>>();
   const { intentResult, bookingId } = route.params || {};
 
   const {
@@ -182,6 +187,7 @@ export default function ProvidersScreen() {
     setBookingResult,
     setStatus,
     setError,
+    fcmToken,
   } = useBookingStore();
 
   const [isLoading, setIsLoading]           = useState(true);
@@ -240,7 +246,28 @@ export default function ProvidersScreen() {
     setSelectedProvider(provider);
     try {
       const intentPayload  = intentResult?.intent || intentResult;
-      const confirmation   = await bookService(bookingId, provId, intentPayload);
+      const uid = auth?.currentUser?.uid;
+      const userDoc = uid && db ? await getDoc(doc(db, 'users', uid)) : null;
+      const userData = userDoc?.exists() ? userDoc.data() : null;
+      const customerName = (userData?.name || auth?.currentUser?.displayName || auth?.currentUser?.email || 'Customer').toString();
+      const customerPhone = (userData?.phone || '').toString();
+      const customerAddress = (userData?.address || intentPayload.location || 'Unknown location').toString();
+      const customerCoordinates = userData?.coordinates && typeof userData.coordinates.latitude === 'number' && typeof userData.coordinates.longitude === 'number'
+        ? userData.coordinates
+        : { latitude: 0, longitude: 0 };
+
+      const confirmation   = await bookService(
+        bookingId,
+        provId,
+        intentPayload,
+        {
+          name: customerName,
+          phone: customerPhone,
+          address: customerAddress,
+          coordinates: customerCoordinates,
+        },
+        fcmToken ?? undefined,
+      );
       setBookingResult(confirmation);
       navigation.reset({
         index: 0,

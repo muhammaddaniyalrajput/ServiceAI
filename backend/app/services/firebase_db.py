@@ -17,7 +17,7 @@ import logging
 import os
 from typing import List, Optional
 
-logger = logging.getLogger("serviceflow")
+logger = logging.getLogger("kaameasy")
 
 _db = None
 
@@ -316,9 +316,10 @@ def create_provider(provider_data: dict) -> str:
     Returns the provider_id.
     """
     import uuid
-    from datetime import datetime
+    from datetime import datetime, timezone
     
     provider_id = f"PROV-{uuid.uuid4().hex[:6].upper()}"
+    _now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     data = {
         "provider_id": provider_id,
         "uid": provider_data.get("uid"),
@@ -339,8 +340,8 @@ def create_provider(provider_data: dict) -> str:
             "longitude": provider_data.get("longitude") or 0.0
         },
         "fcm_token": provider_data.get("fcm_token"),
-        "created_at": datetime.utcnow().isoformat() + "Z",
-        "updated_at": datetime.utcnow().isoformat() + "Z",
+        "created_at": _now,
+        "updated_at": _now,
     }
     
     db = _get_db()
@@ -371,7 +372,7 @@ def update_provider_profile(provider_id: str, profile_data: dict) -> Optional[di
     """
     Update a provider's profile data (name, phone, service, hourly_rate, experience_yrs).
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
     
     updates = {
         "name": profile_data.get("name"),
@@ -381,7 +382,7 @@ def update_provider_profile(provider_id: str, profile_data: dict) -> Optional[di
         "experience_yrs": profile_data.get("experience_yrs"),
         "city": profile_data.get("city"),
         "address": profile_data.get("address"),
-        "updated_at": datetime.utcnow().isoformat() + "Z",
+        "updated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     }
     
     if "latitude" in profile_data:
@@ -414,11 +415,11 @@ def update_provider_availability(provider_id: str, is_available: bool) -> None:
     """
     Toggle provider's availability status.
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
     
     updates = {
         "is_available": is_available,
-        "updated_at": datetime.utcnow().isoformat() + "Z",
+        "updated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     }
     
     db = _get_db()
@@ -435,12 +436,12 @@ def update_provider_location(provider_id: str, latitude: float, longitude: float
     Stream provider's current GPS coordinates.
     Also updates coordinates in the active booking's provider_live_coordinates if booking_id provided.
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
     
     coordinates = {"latitude": latitude, "longitude": longitude}
     updates = {
         "current_coordinates": coordinates,
-        "updated_at": datetime.utcnow().isoformat() + "Z",
+        "updated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     }
     
     db = _get_db()
@@ -498,7 +499,7 @@ def get_registered_providers_by_service(service_type: str, city: str = None) -> 
         return results
     except Exception as e:
         import logging
-        logging.getLogger("serviceflow").warning("Failed to query registered providers: %s", e)
+        logging.getLogger("kaameasy").warning("Failed to query registered providers: %s", e)
         return []
 
 
@@ -570,7 +571,7 @@ def respond_to_job(booking_id: str, action: str, provider_id: str = None) -> Opt
     Updates booking status accordingly.
     Returns updated booking doc.
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
     
     if action == "accept":
         status = "accepted"
@@ -581,7 +582,7 @@ def respond_to_job(booking_id: str, action: str, provider_id: str = None) -> Opt
     
     updates = {
         "status": status,
-        "updated_at": datetime.utcnow().isoformat() + "Z",
+        "updated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     }
     if action == "accept" and provider_id:
         updates["provider_id"] = provider_id
@@ -602,14 +603,15 @@ def add_chat_message(booking_id: str, sender: str, text: str) -> Optional[dict]:
     """
     Appends a message to the chat_messages array in the booking document.
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
     import firebase_admin
     from firebase_admin import firestore
     
+    _now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     msg = {
         "sender": sender,
         "text": text,
-        "timestamp": datetime.utcnow().isoformat() + "Z"
+        "timestamp": _now,
     }
     
     db = _get_db()
@@ -617,7 +619,7 @@ def add_chat_message(booking_id: str, sender: str, text: str) -> Optional[dict]:
         booking_ref = db.collection("bookings").document(booking_id)
         booking_ref.update({
             "chat_messages": firestore.ArrayUnion([msg]),
-            "updated_at": datetime.utcnow().isoformat() + "Z"
+            "updated_at": _now,
         })
         return booking_ref.get().to_dict()
     else:
@@ -634,11 +636,11 @@ def update_job_status(booking_id: str, status: str) -> Optional[dict]:
     Update a job's status.
     status: 'on_the_way' | 'arrived' | 'in_progress' | 'completed'
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
     
     updates = {
         "status": status,
-        "updated_at": datetime.utcnow().isoformat() + "Z",
+        "updated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     }
     
     db = _get_db()

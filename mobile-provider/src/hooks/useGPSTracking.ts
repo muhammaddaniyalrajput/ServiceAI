@@ -160,7 +160,11 @@ export const useGPSTracking = (options: UseGPSTrackingOptions = {}) => {
     setLocationTracking(false);
   };
 
-  // Auto-start/stop based on enabled flag
+  // Auto-start/stop based on enabled flag.
+  // Depend on bookingId/interval too: startTracking closes over both, so if the
+  // tracked booking changes mid-session the effect must tear down the old stream
+  // (cleanup) and restart with the new bookingId — otherwise it keeps sending
+  // location updates tagged with the previous job.
   useEffect(() => {
     if (enabled) {
       startTracking();
@@ -171,7 +175,7 @@ export const useGPSTracking = (options: UseGPSTrackingOptions = {}) => {
     return () => {
       stopTracking();
     };
-  }, [enabled]);
+  }, [enabled, bookingId, interval]);
 
   return {
     isTracking,

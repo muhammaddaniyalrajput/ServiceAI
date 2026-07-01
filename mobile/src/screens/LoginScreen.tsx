@@ -158,7 +158,7 @@ export default function LoginScreen({ navigation }: Props) {
           <View style={styles.logoBadge}>
             <Text style={styles.logoLetter}>S</Text>
           </View>
-          <Text style={styles.brand}>ServiceFlow AI</Text>
+          <Text style={styles.brand}>KaamEasy AI</Text>
           <Text style={styles.title}>Welcome Back</Text>
           <Text style={styles.subtitle}>Sign in to manage your bookings.</Text>
         </Animated.View>

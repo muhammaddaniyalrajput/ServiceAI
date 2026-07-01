@@ -13,7 +13,7 @@ import logging
 import googlemaps
 from app.core.config import settings
 
-logger = logging.getLogger("serviceflow")
+logger = logging.getLogger("kaameasy")
 
 _gmaps_client = None
 

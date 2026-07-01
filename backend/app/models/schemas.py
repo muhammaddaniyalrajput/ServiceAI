@@ -95,6 +95,13 @@ class BookingResult(BaseModel):
     confirmation_code: str
 
 
+class CustomerSnapshot(BaseModel):
+    customer_name:         str
+    customer_phone:        str
+    customer_address:      str
+    customer_coordinates:  Dict[str, float] = Field(..., description="{latitude, longitude}")
+
+
 # ──────────────────────────────────────────────
 # Agent Log
 # ──────────────────────────────────────────────
@@ -155,6 +162,10 @@ class BookServiceRequest(BaseModel):
     booking_id:   str
     provider_id:  str
     intent:       IntentOutput
+    customer_name:        str = Field(..., min_length=2)
+    customer_phone:       str = Field(..., min_length=7)
+    customer_address:     str = Field(..., min_length=3)
+    customer_coordinates: Dict[str, float] = Field(..., description="{latitude, longitude}")
     device_token: Optional[str] = Field(
         None,
         description="Optional FCM device token. If provided, a real push notification is sent.",

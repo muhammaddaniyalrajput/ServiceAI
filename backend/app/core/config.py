@@ -3,7 +3,7 @@ from typing import List
 
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "ServiceFlow AI"
+    PROJECT_NAME: str = "KaamEasy AI"
     APP_ENV: str = "development"
     LOG_LEVEL: str = "DEBUG"
 

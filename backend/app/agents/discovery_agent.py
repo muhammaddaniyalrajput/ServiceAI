@@ -177,7 +177,7 @@ def run_discovery_agent(booking_id: str, intent: IntentOutput) -> tuple[List[Pro
                 })
     except Exception as e:
         import logging
-        logging.getLogger("serviceflow").warning("Firestore registered provider lookup failed: %s", e)
+        logging.getLogger("kaameasy").warning("Firestore registered provider lookup failed: %s", e)
 
     # ══════════════════════════════════════════════════════════════════════
     # SOURCE 2: Google Places API
@@ -190,7 +190,20 @@ def run_discovery_agent(booking_id: str, intent: IntentOutput) -> tuple[List[Pro
         reasoning=f"Searching Google Places for '{canonical_service}' near '{location_text}'.",
     ))
 
-    google_dicts = get_providers_from_google(canonical_service, location_text)
+    google_dicts = []
+    try:
+        google_dicts = get_providers_from_google(canonical_service, location_text)
+    except Exception as e:
+        import logging
+        logging.getLogger("kaameasy").warning("Google Places lookup failed: %s", e)
+        logs.append(log_agent(
+            booking_id=booking_id,
+            agent="Provider Discovery Agent",
+            action="Google Places lookup unavailable — continuing with other sources",
+            status="processing",
+            reasoning="Google Places API was unavailable or returned an error. "
+                      "Falling back to registered/mock providers.",
+        ))
 
     # ══════════════════════════════════════════════════════════════════════
     # MERGE: Registered providers first, then Google Places results
@@ -244,7 +257,7 @@ def run_discovery_agent(booking_id: str, intent: IntentOutput) -> tuple[List[Pro
         except Exception as e:
             # Skip malformed entries without crashing the pipeline
             import logging
-            logging.getLogger("serviceflow").warning("Skipping malformed provider entry: %s", e)
+            logging.getLogger("kaameasy").warning("Skipping malformed provider entry: %s", e)
 
     if not matched:
         # Last resort: return closest mock providers of any service

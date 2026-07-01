@@ -1,13 +1,14 @@
 /**
- * BookingHistoryScreen — displays all past bookings for the signed-in user,
- * fetched directly from Firestore `bookings` collection filtered by uid.
+ * BookingHistoryScreen — KaamEasy AI past-bookings list with pull-to-refresh,
+ * status badges (now driven by the shared `<StatusBadge>`), and a bottom
+ * detail sheet.
  *
- * Features:
- * - Pull-to-refresh
- * - Status color badges (confirmed / searching / failed)
- * - Animated card entrance
- * - Empty state with CTA back to Home
- * - Shimmer skeleton loading
+ * Refactor notes (Phase 3 de-clutter):
+ *   - Wrapped in `SafeAreaView` so the list never clips under the notch.
+ *   - Inline `getStatusStyle()` + `statusBadge` JSX replaced with the shared
+ *     `<StatusBadge>` component (state.* tokens).
+ *   - All hardcoded hex strings pulled into `AppColors` / `Spacing` / `Radius`.
+ *   - Tiny 10–11px font sizes bumped to 12+ on the modal.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -18,10 +19,10 @@ import {
   TouchableOpacity,
   Animated,
   RefreshControl,
-  Platform,
   Modal,
   ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   collection,
   query,
@@ -31,9 +32,21 @@ import {
   limit,
 } from 'firebase/firestore';
 import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../types/navigation';
+import { buildTrackingRouteParams } from '../utils/bookingRoutes';
 import { db, auth } from '../firebase';
+import {
+  AppColors,
+  FontWeight,
+  Radius,
+  Spacing,
+} from '../constants/theme';
+import { StatusBadge, type StatusKey } from '../components/ui/StatusBadge';
+import { EmptyState } from '../components/ui/EmptyState';
+import { PrimaryButton } from '../components/ui/PrimaryButton';
 
-// ─── Types ─────────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Booking {
   id: string;
@@ -56,33 +69,27 @@ interface Booking {
     city?: string;
     address?: string;
   };
-  user_coordinates?: {
-    latitude: number;
-    longitude: number;
-  };
+  user_coordinates?: { latitude: number; longitude: number };
   created_at?: any;
   scheduled_at?: string;
   total_estimated_cost?: number;
 }
 
-// ─── Status config ─────────────────────────────────────────────────────────────
+const STATUS_ICON: Record<string, string> = {
+  confirmed:  '✓',
+  notified:   '✓',
+  completed:  '✓',
+  searching:  '⏳',
+  ranking:    '⏳',
+  pending_intent: '⏳',
+  failed:     '✕',
+};
 
-function getStatusStyle(status: string): { bg: string; text: string; border: string; icon: string } {
-  switch (status?.toLowerCase()) {
-    case 'confirmed':
-    case 'notified':
-    case 'completed':
-      return { bg: 'rgba(16,185,129,0.1)', text: '#34d399', border: 'rgba(16,185,129,0.3)', icon: '✓' };
-    case 'searching':
-    case 'ranking':
-    case 'pending_intent':
-      return { bg: 'rgba(245,158,11,0.1)', text: '#fbbf24', border: 'rgba(245,158,11,0.3)', icon: '⏳' };
-    case 'failed':
-      return { bg: 'rgba(239,68,68,0.1)', text: '#f87171', border: 'rgba(239,68,68,0.3)', icon: '✕' };
-    default:
-      return { bg: 'rgba(99,102,241,0.1)', text: '#818cf8', border: 'rgba(99,102,241,0.3)', icon: '○' };
-  }
-}
+const TRACKING_ACTIVE_STATUSES = new Set([
+  'confirmed', 'accepted', 'on_the_way', 'arrived', 'in_progress',
+]);
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatDate(timestamp: any): string {
   if (!timestamp) return 'Unknown date';
@@ -100,7 +107,7 @@ function formatDate(timestamp: any): string {
   }
 }
 
-// ─── Skeleton card ─────────────────────────────────────────────────────────────
+// ─── Skeleton card ────────────────────────────────────────────────────────────
 
 const SkeletonCard: React.FC = () => {
   const shimmer = useRef(new Animated.Value(0)).current;
@@ -111,12 +118,12 @@ const SkeletonCard: React.FC = () => {
         Animated.timing(shimmer, { toValue: 0, duration: 900, useNativeDriver: true }),
       ]),
     ).start();
-  }, []);
+  }, [shimmer]);
   const opacity = shimmer.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0.55] });
 
   return (
     <Animated.View style={[styles.card, { opacity }]}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
+      <View style={styles.skelTopRow}>
         <View style={[styles.skelBar, { width: '55%', height: 14 }]} />
         <View style={[styles.skelBar, { width: 70, height: 22, borderRadius: 10 }]} />
       </View>
@@ -127,8 +134,13 @@ const SkeletonCard: React.FC = () => {
   );
 };
 
-// ─── Animated booking card ─────────────────────────────────────────────────────
-const BookingCard: React.FC<{ item: Booking; index: number; onPress: () => void }> = ({ item, index, onPress }) => {
+// ─── Animated booking card ────────────────────────────────────────────────────
+
+const BookingCard: React.FC<{ item: Booking; index: number; onPress: () => void }> = ({
+  item,
+  index,
+  onPress,
+}) => {
   const slide   = useRef(new Animated.Value(30)).current;
   const opacity = useRef(new Animated.Value(0)).current;
 
@@ -137,26 +149,23 @@ const BookingCard: React.FC<{ item: Booking; index: number; onPress: () => void 
       Animated.timing(slide,   { toValue: 0, duration: 350, delay: index * 60, useNativeDriver: true }),
       Animated.timing(opacity, { toValue: 1, duration: 350, delay: index * 60, useNativeDriver: true }),
     ]).start();
-  }, []);
+  }, [index, opacity, slide]);
 
-  const status     = item.status ?? 'unknown';
-  const statusStyle = getStatusStyle(status);
-  
-  const provider = item.provider || (item as any).booking?.provider;
+  const status     = (item.status ?? 'pending') as StatusKey;
+  const provider   = item.provider || (item as any).booking?.provider;
   const scheduledAt = item.scheduled_at || (item as any).booking?.scheduled_at;
-  const totalCost = item.total_estimated_cost || (item as any).booking?.total_estimated_cost;
-
+  const totalCost  = item.total_estimated_cost || (item as any).booking?.total_estimated_cost;
   const serviceType = item.extracted_intent?.service_type
     || provider?.service
     || (item as any).booking?.service
     || 'Service';
   const location   = item.extracted_intent?.location || 'N/A';
   const bookingRef = (item.booking_id || item.id || '').slice(0, 8).toUpperCase();
+  const icon = STATUS_ICON[status] ?? '○';
 
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
       <Animated.View style={[styles.card, { opacity, transform: [{ translateY: slide }] }]}>
-        {/* Top row: service + status badge */}
         <View style={styles.cardTop}>
           <View style={styles.cardIcon}>
             <Text style={styles.cardIconText}>🔧</Text>
@@ -165,36 +174,28 @@ const BookingCard: React.FC<{ item: Booking; index: number; onPress: () => void 
             <Text style={styles.serviceType} numberOfLines={1}>{serviceType}</Text>
             <Text style={styles.bookingRef}>#{bookingRef}</Text>
           </View>
-          <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg, borderColor: statusStyle.border }]}>
-            <Text style={[styles.statusText, { color: statusStyle.text }]}>
-              {statusStyle.icon} {status.replace(/_/g, ' ')}
-            </Text>
-          </View>
+          <StatusBadge status={status} size="sm" label={`${icon} ${status.replace(/_/g, ' ')}`} />
         </View>
 
-        {/* Provider row */}
-        {provider?.name && (
+        {provider?.name ? (
           <View style={styles.detailRow}>
             <Text style={styles.detailIcon}>👤</Text>
             <Text style={styles.detailText}>{provider.name}</Text>
           </View>
-        )}
+        ) : null}
 
-        {/* Location row */}
         <View style={styles.detailRow}>
           <Text style={styles.detailIcon}>📍</Text>
           <Text style={styles.detailText} numberOfLines={1}>{location}</Text>
         </View>
 
-        {/* Cost row */}
-        {totalCost && (
+        {totalCost ? (
           <View style={styles.detailRow}>
             <Text style={styles.detailIcon}>💰</Text>
             <Text style={styles.detailText}>Rs. {totalCost}</Text>
           </View>
-        )}
+        ) : null}
 
-        {/* Footer: date */}
         <View style={styles.cardFooter}>
           <Text style={styles.dateText}>{scheduledAt || formatDate(item.created_at)}</Text>
           {item.request_text ? (
@@ -207,10 +208,169 @@ const BookingCard: React.FC<{ item: Booking; index: number; onPress: () => void 
     </TouchableOpacity>
   );
 };
+
+// ─── Modal body component ────────────────────────────────────────────────────
+
+interface BookingDetailModalProps {
+  booking: Booking;
+  onClose: () => void;
+  onTrack: (params: { providerLat: number; providerLng: number; userLat: number; userLng: number }) => void;
+  onChat: () => void;
+}
+
+const BookingDetailModal: React.FC<BookingDetailModalProps> = ({ booking, onClose, onTrack, onChat }) => {
+  const status = (booking.status ?? 'pending') as StatusKey;
+  const provider = booking.provider || (booking as any).booking?.provider;
+  const scheduledAt = booking.scheduled_at || (booking as any).booking?.scheduled_at;
+  const totalCost = booking.total_estimated_cost || (booking as any).booking?.total_estimated_cost;
+  const serviceType = booking.extracted_intent?.service_type
+    || provider?.service
+    || (booking as any).booking?.service
+    || 'Service';
+  const rating = typeof provider?.rating === 'number' ? provider.rating : 4.8;
+  const starsLabel = '★'.repeat(Math.round(rating)) + '☆'.repeat(5 - Math.round(rating));
+  const bookingRef = (booking.booking_id || booking.id || '').slice(0, 8).toUpperCase();
+  const isTrackingActive = TRACKING_ACTIVE_STATUSES.has(status);
+
+  return (
+    <ScrollView contentContainerStyle={styles.modalScroll} showsVerticalScrollIndicator={false}>
+      <View style={styles.modalHeader}>
+        <View style={styles.modalHeaderInfo}>
+          <Text style={styles.modalTitle}>{serviceType}</Text>
+          <Text style={styles.modalRef}>#{bookingRef}</Text>
+        </View>
+        <StatusBadge status={status} size="md" />
+      </View>
+
+      <View style={styles.sectionContainer}>
+        <Text style={styles.sectionTitle}>SCHEDULED DATE & TIME</Text>
+        <View style={styles.dateHighlightBox}>
+          <Text style={styles.dateHighlightEmoji}>📅</Text>
+          <View style={styles.flex}>
+            <Text style={styles.dateHighlightText}>
+              {scheduledAt || formatDate(booking.created_at)}
+            </Text>
+            <Text style={styles.dateHighlightSub}>
+              Created: {formatDate(booking.created_at)}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      {provider?.name ? (
+        <View style={styles.sectionContainer}>
+          <Text style={styles.sectionTitle}>BOOKED PROVIDER</Text>
+          <View style={styles.providerCard}>
+            <View style={styles.providerLeft}>
+              <View style={styles.providerAvatar}>
+                <Text style={styles.providerAvatarText}>
+                  {provider.name.charAt(0).toUpperCase()}
+                </Text>
+              </View>
+              <View style={styles.flex}>
+                <Text style={styles.providerNameText} numberOfLines={1}>{provider.name}</Text>
+                <Text style={styles.providerServiceText} numberOfLines={1}>
+                  {provider.service || serviceType}
+                </Text>
+                {(provider.address || provider.city) ? (
+                  <Text style={styles.providerAddress} numberOfLines={2}>
+                    📍 {provider.address}{provider.address && provider.city ? ', ' : ''}{provider.city}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+            <View style={styles.providerRight}>
+              <View style={styles.ratingBox}>
+                <Text style={styles.ratingStars}>{starsLabel.slice(0, 5)}</Text>
+                <Text style={styles.ratingNum}>{rating.toFixed(1)}</Text>
+              </View>
+              {provider.hourly_rate ? (
+                <Text style={styles.hourlyRateText}>
+                  Rs. {provider.hourly_rate}/hr
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        </View>
+      ) : (
+        <View style={styles.sectionContainer}>
+          <Text style={styles.sectionTitle}>BOOKED PROVIDER</Text>
+          <View style={styles.noProviderCard}>
+            <Text style={styles.noProviderText}>No specific provider assigned yet.</Text>
+          </View>
+        </View>
+      )}
+
+      <View style={styles.sectionContainer}>
+        <Text style={styles.sectionTitle}>SERVICE LOCATION</Text>
+        <View style={styles.infoRow}>
+          <Text style={styles.infoIcon}>📍</Text>
+          <Text style={styles.infoText}>
+            {booking.extracted_intent?.location || 'Not specified'}
+          </Text>
+        </View>
+      </View>
+
+      {totalCost ? (
+        <View style={styles.sectionContainer}>
+          <Text style={styles.sectionTitle}>ESTIMATED COST</Text>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoIcon}>💰</Text>
+            <Text style={styles.costText}>Rs. {totalCost}</Text>
+          </View>
+        </View>
+      ) : null}
+
+      {booking.request_text ? (
+        <View style={styles.sectionContainer}>
+          <Text style={styles.sectionTitle}>YOUR REQUEST</Text>
+          <View style={styles.requestBox}>
+            <Text style={styles.requestBoxText}>"{booking.request_text}"</Text>
+          </View>
+        </View>
+      ) : null}
+
+      {status === 'accepted' ? (
+        <PrimaryButton
+          label="Chat & Negotiate Timing 💬"
+          onPress={onChat}
+          color={AppColors.success}
+        />
+      ) : isTrackingActive ? (
+        <View style={styles.trackingActions}>
+          <PrimaryButton
+            label="Track Provider Live 🗺️"
+            onPress={() => {
+              const providerLat = provider?.latitude ?? 33.6844;
+              const providerLng = provider?.longitude ?? 73.0479;
+              const userLat = booking.user_coordinates?.latitude ?? (providerLat + 0.015);
+              const userLng = booking.user_coordinates?.longitude ?? (providerLng + 0.012);
+              onTrack({ providerLat, providerLng, userLat, userLng });
+            }}
+          />
+          <PrimaryButton
+            label="Chat with Provider 💬"
+            onPress={onChat}
+            style={styles.secondaryBtn}
+          />
+        </View>
+      ) : null}
+
+      <TouchableOpacity
+        style={styles.closeBtn}
+        activeOpacity={0.8}
+        onPress={onClose}
+      >
+        <Text style={styles.closeBtnText}>Close</Text>
+      </TouchableOpacity>
+    </ScrollView>
+  );
+};
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function BookingHistoryScreen() {
-  const navigation          = useNavigation<any>();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -230,25 +390,39 @@ export default function BookingHistoryScreen() {
     setError(null);
 
     try {
-      const q = query(
-        collection(db, 'bookings'),
-        where('user_id', '==', uid),
-        limit(50),
-      );
-      const snapshot = await getDocs(q);
-      const results: Booking[] = snapshot.docs.map((d) => ({
-        id: d.id,
-        ...(d.data() as Omit<Booking, 'id'>),
-      }));
-      // Sort in-memory descending by created_at
-      results.sort((a, b) => {
-        const timeA = a.created_at?.seconds ?? 0;
-        const timeB = b.created_at?.seconds ?? 0;
-        return timeB - timeA;
-      });
+      let results: Booking[];
+      try {
+        const q = query(
+          collection(db, 'bookings'),
+          where('user_id', '==', uid),
+          orderBy('created_at', 'desc'),
+          limit(50),
+        );
+        const snapshot = await getDocs(q);
+        results = snapshot.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as Omit<Booking, 'id'>),
+        }));
+      } catch (indexErr: any) {
+        if (indexErr?.code !== 'failed-precondition') throw indexErr;
+        const fallbackQ = query(
+          collection(db, 'bookings'),
+          where('user_id', '==', uid),
+          limit(50),
+        );
+        const snapshot = await getDocs(fallbackQ);
+        results = snapshot.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as Omit<Booking, 'id'>),
+        }));
+        results.sort((a, b) => {
+          const timeA = a.created_at?.seconds ?? 0;
+          const timeB = b.created_at?.seconds ?? 0;
+          return timeB - timeA;
+        });
+      }
       setBookings(results);
     } catch (err: any) {
-      // Firestore index error — suggest creation
       if (err?.code === 'failed-precondition') {
         setError('Database index is being built. Please try again in a moment.');
       } else {
@@ -260,20 +434,44 @@ export default function BookingHistoryScreen() {
     }
   }, []);
 
-  useEffect(() => { fetchBookings(); }, []);
+  useEffect(() => { fetchBookings(); }, [fetchBookings]);
+
+  const openChatForBooking = (booking: Booking) => {
+    const provider = booking.provider || (booking as any).booking?.provider;
+    setSelectedBooking(null);
+    navigation.navigate('Chat', {
+      bookingId: booking.id,
+      providerName: provider?.name || 'Provider',
+    });
+  };
+
+  const trackBooking = (
+    booking: Booking,
+    coords: { providerLat: number; providerLng: number; userLat: number; userLng: number }
+  ) => {
+    const provider = booking.provider || (booking as any).booking?.provider;
+    setSelectedBooking(null);
+    navigation.navigate(
+      'LiveTracking',
+      buildTrackingRouteParams({
+        bookingId: booking.id,
+        providerName: provider?.name || 'Provider',
+        providerCoordinates: { latitude: coords.providerLat, longitude: coords.providerLng },
+        userCoordinates: { latitude: coords.userLat, longitude: coords.userLng },
+      })
+    );
+  };
 
   return (
-    <View style={styles.container}>
-
-      {/* Error banner */}
-      {error && (
+    <SafeAreaView style={styles.root} edges={['top']}>
+      {error ? (
         <View style={styles.errorBanner}>
           <Text style={styles.errorText}>{error}</Text>
           <TouchableOpacity onPress={() => fetchBookings()}>
             <Text style={styles.retryText}>Retry</Text>
           </TouchableOpacity>
         </View>
-      )}
+      ) : null}
 
       {isLoading ? (
         <FlatList
@@ -299,290 +497,116 @@ export default function BookingHistoryScreen() {
             <RefreshControl
               refreshing={isRefreshing}
               onRefresh={() => fetchBookings(true)}
-              tintColor="#6366f1"
-              colors={['#6366f1']}
+              tintColor={AppColors.primary}
+              colors={[AppColors.primary]}
             />
           }
           ListHeaderComponent={
             bookings.length > 0 ? (
-              <Text style={styles.listHeader}>{bookings.length} booking{bookings.length !== 1 ? 's' : ''} found</Text>
+              <Text style={styles.listHeader}>
+                {bookings.length} booking{bookings.length !== 1 ? 's' : ''} found
+              </Text>
             ) : null
           }
           ListEmptyComponent={
             !error ? (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyIcon}>📋</Text>
-                <Text style={styles.emptyTitle}>No Bookings Yet</Text>
-                <Text style={styles.emptyBody}>
-                  Your confirmed bookings will appear here.
-                </Text>
-                <TouchableOpacity
-                  style={styles.emptyBtn}
-                  onPress={() => navigation.navigate('Home')}
-                >
-                  <Text style={styles.emptyBtnText}>Book a Service →</Text>
-                </TouchableOpacity>
-              </View>
+              <EmptyState
+                icon="📋"
+                title="No bookings yet"
+                body="Your confirmed bookings will appear here once a provider accepts your request."
+                action={{ label: 'Book a service', onPress: () => navigation.navigate('MainTabs') }}
+              />
             ) : null
           }
         />
       )}
 
-      {/* Detail Modal */}
       <Modal
         visible={selectedBooking !== null}
         animationType="slide"
-        transparent={true}
+        transparent
         onRequestClose={() => setSelectedBooking(null)}
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalContent}>
-            {/* Grab handle/indicator for bottom sheet feel */}
             <View style={styles.modalGrabHandle} />
-
-            {selectedBooking && (() => {
-              const booking = selectedBooking;
-              const status = booking.status ?? 'unknown';
-              const statusStyle = getStatusStyle(status);
-              
-              const provider = booking.provider || (booking as any).booking?.provider;
-              const scheduledAt = booking.scheduled_at || (booking as any).booking?.scheduled_at;
-              const totalCost = booking.total_estimated_cost || (booking as any).booking?.total_estimated_cost;
-              
-              const serviceType = booking.extracted_intent?.service_type
-                || provider?.service
-                || (booking as any).booking?.service
-                || 'Service';
-              const rating = typeof provider?.rating === 'number'
-                ? provider.rating
-                : 4.8;
-              const starsLabel = '★'.repeat(Math.round(rating)) + '☆'.repeat(5 - Math.round(rating));
-              const bookingRef = (booking.booking_id || booking.id || '').slice(0, 8).toUpperCase();
-              
-              const isTrackingActive = ['confirmed', 'accepted', 'on_the_way', 'arrived', 'in_progress'].includes(status.toLowerCase());
-
-              return (
-                <ScrollView contentContainerStyle={styles.modalScroll} showsVerticalScrollIndicator={false}>
-                  {/* Header Row */}
-                  <View style={styles.modalHeader}>
-                    <View style={styles.modalHeaderInfo}>
-                      <Text style={styles.modalTitle}>{serviceType}</Text>
-                      <Text style={styles.modalRef}>#{bookingRef}</Text>
-                    </View>
-                    <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg, borderColor: statusStyle.border, alignSelf: 'flex-start' }]}>
-                      <Text style={[styles.statusText, { color: statusStyle.text }]}>
-                        {statusStyle.icon} {status.replace(/_/g, ' ')}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Scheduled Date Section */}
-                  <View style={styles.sectionContainer}>
-                    <Text style={styles.sectionTitle}>SCHEDULED DATE & TIME</Text>
-                    <View style={styles.dateHighlightBox}>
-                      <Text style={styles.dateHighlightEmoji}>📅</Text>
-                      <View>
-                        <Text style={styles.dateHighlightText}>
-                          {scheduledAt || formatDate(booking.created_at)}
-                        </Text>
-                        <Text style={styles.dateHighlightSub}>
-                          Created: {formatDate(booking.created_at)}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-
-                  {/* Provider Details Section */}
-                  {provider?.name ? (
-                    <View style={styles.sectionContainer}>
-                      <Text style={styles.sectionTitle}>BOOKED PROVIDER</Text>
-                      <View style={styles.providerCard}>
-                        <View style={styles.providerLeft}>
-                          <View style={styles.providerAvatar}>
-                            <Text style={styles.providerAvatarText}>
-                              {provider.name.charAt(0).toUpperCase()}
-                            </Text>
-                          </View>
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.providerNameText} numberOfLines={1}>{provider.name}</Text>
-                            <Text style={styles.providerServiceText} numberOfLines={1}>
-                              {provider.service || serviceType}
-                            </Text>
-                            {(provider.address || provider.city) && (
-                              <Text style={{ color: '#64748b', fontSize: 11, marginTop: 4 }} numberOfLines={2}>
-                                📍 {provider.address}{provider.address && provider.city ? ', ' : ''}{provider.city}
-                              </Text>
-                            )}
-                          </View>
-                        </View>
-                        <View style={styles.providerRight}>
-                          <View style={styles.ratingBox}>
-                            <Text style={styles.ratingStars}>{starsLabel.slice(0, 5)}</Text>
-                            <Text style={styles.ratingNum}>{rating.toFixed(1)}</Text>
-                          </View>
-                          {provider.hourly_rate ? (
-                            <Text style={styles.hourlyRateText}>
-                              Rs. {provider.hourly_rate}/hr
-                            </Text>
-                          ) : null}
-                        </View>
-                      </View>
-                    </View>
-                  ) : (
-                    <View style={styles.sectionContainer}>
-                      <Text style={styles.sectionTitle}>BOOKED PROVIDER</Text>
-                      <View style={styles.noProviderCard}>
-                        <Text style={styles.noProviderText}>No specific provider assigned yet.</Text>
-                      </View>
-                    </View>
-                  )}
-
-                  {/* Location Section */}
-                  <View style={styles.sectionContainer}>
-                    <Text style={styles.sectionTitle}>SERVICE LOCATION</Text>
-                    <View style={styles.infoRow}>
-                      <Text style={styles.infoIcon}>📍</Text>
-                      <Text style={styles.infoText}>
-                        {booking.extracted_intent?.location || 'Not specified'}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Cost Details */}
-                  {totalCost ? (
-                    <View style={styles.sectionContainer}>
-                      <Text style={styles.sectionTitle}>ESTIMATED COST</Text>
-                      <View style={styles.infoRow}>
-                        <Text style={styles.infoIcon}>💰</Text>
-                        <Text style={styles.costText}>
-                          Rs. {totalCost}
-                        </Text>
-                      </View>
-                    </View>
-                  ) : null}
-
-                  {/* Intent Request Text */}
-                  {booking.request_text ? (
-                    <View style={styles.sectionContainer}>
-                      <Text style={styles.sectionTitle}>YOUR REQUEST</Text>
-                      <View style={styles.requestBox}>
-                        <Text style={styles.requestBoxText}>
-                          "{booking.request_text}"
-                        </Text>
-                      </View>
-                    </View>
-                  ) : null}
-
-                  {/* Active Tracking Button */}
-                  {isTrackingActive && (
-                    <TouchableOpacity
-                      style={styles.trackBtn}
-                      activeOpacity={0.8}
-                      onPress={() => {
-                        const providerLat = provider?.latitude ?? 33.6844;
-                        const providerLng = provider?.longitude ?? 73.0479;
-                        const userLat = booking.user_coordinates?.latitude ?? (providerLat + 0.015);
-                        const userLng = booking.user_coordinates?.longitude ?? (providerLng + 0.012);
-
-                        setSelectedBooking(null);
-                        navigation.navigate('LiveTracking', {
-                          bookingId: booking.id,
-                          providerCoordinates: { latitude: providerLat, longitude: providerLng },
-                          userCoordinates: { latitude: userLat, longitude: userLng },
-                          providerName: provider?.name || 'Provider',
-                        });
-                      }}
-                    >
-                      <Text style={styles.trackBtnText}>Track Provider Live 🗺️</Text>
-                    </TouchableOpacity>
-                  )}
-
-                  {/* Close Button */}
-                  <TouchableOpacity
-                    style={styles.closeBtn}
-                    activeOpacity={0.8}
-                    onPress={() => setSelectedBooking(null)}
-                  >
-                    <Text style={styles.closeBtnText}>Close</Text>
-                  </TouchableOpacity>
-                </ScrollView>
-              );
-            })()}
+            {selectedBooking ? (
+              <BookingDetailModal
+                booking={selectedBooking}
+                onClose={() => setSelectedBooking(null)}
+                onTrack={(coords) => trackBooking(selectedBooking, coords)}
+                onChat={() => openChatForBooking(selectedBooking)}
+              />
+            ) : null}
           </View>
         </View>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f172a' },
-  listPad:   { padding: 16, paddingBottom: 32 },
+  root: { flex: 1, backgroundColor: AppColors.bg },
+  flex: { flex: 1 },
+  listPad: { padding: Spacing.four, paddingBottom: Spacing.eight },
 
   listHeader: {
-    color: '#475569', fontSize: 12, fontWeight: '600',
-    marginBottom: 12, letterSpacing: 0.5,
+    color: AppColors.textMuted,
+    fontSize: 12,
+    fontWeight: FontWeight.semibold as '600',
+    marginBottom: Spacing.three,
+    letterSpacing: 0.5,
   },
 
   card: {
-    backgroundColor: 'rgba(30,41,59,0.85)',
-    borderRadius: 18, padding: 16,
-    borderWidth: 1, borderColor: 'rgba(51,65,85,0.7)',
-    marginBottom: 12,
+    backgroundColor: AppColors.surface,
+    borderRadius: Radius.lg,
+    padding: Spacing.four,
+    borderWidth: 1,
+    borderColor: AppColors.border,
+    marginBottom: Spacing.three,
   },
-  cardTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 10 },
+  cardTop: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.three, gap: Spacing.two },
   cardIcon: {
-    width: 40, height: 40, borderRadius: 12,
-    backgroundColor: 'rgba(99,102,241,0.15)',
+    width: 40, height: 40, borderRadius: Radius.md,
+    backgroundColor: AppColors.surface2,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: 'rgba(99,102,241,0.25)',
+    borderWidth: 1, borderColor: AppColors.border,
     flexShrink: 0,
   },
   cardIconText: { fontSize: 18 },
   cardMeta:    { flex: 1 },
-  serviceType: { color: '#f1f5f9', fontSize: 14, fontWeight: '700', marginBottom: 2 },
-  bookingRef:  { color: '#475569', fontSize: 11, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' },
+  serviceType: { color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold as '700', marginBottom: 2 },
+  bookingRef:  { color: AppColors.textMuted, fontSize: 12, fontFamily: 'monospace' },
 
-  statusBadge: {
-    borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4,
-    borderWidth: 1, flexShrink: 0,
-  },
-  statusText: { fontSize: 10, fontWeight: '700', textTransform: 'capitalize' },
-
-  detailRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  detailRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, marginBottom: 6 },
   detailIcon:{ fontSize: 13 },
-  detailText:{ color: '#94a3b8', fontSize: 13, flex: 1 },
+  detailText:{ color: AppColors.textSecondary, fontSize: 13, flex: 1 },
 
   cardFooter: {
-    marginTop: 10, paddingTop: 10,
-    borderTopWidth: 1, borderTopColor: 'rgba(51,65,85,0.5)',
+    marginTop: Spacing.two, paddingTop: Spacing.two,
+    borderTopWidth: 1, borderTopColor: AppColors.border,
     gap: 4,
   },
-  dateText:        { color: '#475569', fontSize: 11 },
-  requestSnippet:  { color: '#334155', fontSize: 11, fontStyle: 'italic' },
+  dateText:        { color: AppColors.textMuted, fontSize: 12 },
+  requestSnippet:  { color: AppColors.textMuted, fontSize: 12, fontStyle: 'italic' },
 
   errorBanner: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    margin: 16, backgroundColor: 'rgba(239,68,68,0.1)',
-    borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12,
-    borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)',
+    margin: Spacing.four,
+    backgroundColor: 'rgba(239,68,68,0.10)',
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.three,
+    borderWidth: 1, borderColor: 'rgba(239,68,68,0.30)',
   },
   errorText: { color: '#fca5a5', fontSize: 13, flex: 1 },
-  retryText: { color: '#818cf8', fontSize: 13, fontWeight: '700', marginLeft: 12 },
+  retryText: { color: AppColors.textSecondary, fontSize: 13, fontWeight: FontWeight.bold as '700', marginLeft: Spacing.three },
 
-  skelBar: { backgroundColor: '#1e293b', borderRadius: 6, marginBottom: 8 },
-
-  emptyState: { alignItems: 'center', paddingTop: 72 },
-  emptyIcon:  { fontSize: 48, marginBottom: 16 },
-  emptyTitle: { color: '#64748b', fontSize: 18, fontWeight: '700', marginBottom: 8 },
-  emptyBody:  { color: '#475569', fontSize: 14, textAlign: 'center', marginBottom: 28, lineHeight: 20 },
-  emptyBtn: {
-    backgroundColor: '#6366f1', borderRadius: 14,
-    paddingHorizontal: 24, paddingVertical: 13,
-  },
-  emptyBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  skelBar: { backgroundColor: AppColors.surface2, borderRadius: 6, marginBottom: Spacing.two },
+  skelTopRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: Spacing.two },
 
   // Modal Styles
   modalBackdrop: {
@@ -591,224 +615,179 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#1e293b',
+    backgroundColor: AppColors.surface,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    paddingTop: 12,
-    paddingHorizontal: 20,
-    paddingBottom: Platform.OS === 'ios' ? 34 : 24,
+    paddingTop: Spacing.three,
+    paddingHorizontal: Spacing.five,
+    paddingBottom: Spacing.ten,
     borderWidth: 1,
-    borderColor: 'rgba(51, 65, 85, 0.8)',
+    borderColor: AppColors.border,
     maxHeight: '85%',
   },
   modalGrabHandle: {
     width: 40,
     height: 5,
     borderRadius: 3,
-    backgroundColor: '#475569',
+    backgroundColor: AppColors.textMuted,
     alignSelf: 'center',
-    marginBottom: 16,
+    marginBottom: Spacing.four,
   },
-  modalScroll: {
-    paddingBottom: 16,
-  },
+  modalScroll: { paddingBottom: Spacing.four },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
+    alignItems: 'flex-start',
+    marginBottom: Spacing.five,
+    gap: Spacing.three,
   },
-  modalHeaderInfo: {
-    flex: 1,
-    marginRight: 12,
-  },
+  modalHeaderInfo: { flex: 1 },
   modalTitle: {
-    color: '#f1f5f9',
+    color: AppColors.textPrimary,
     fontSize: 20,
-    fontWeight: '800',
+    fontWeight: FontWeight.extrabold as '800',
   },
   modalRef: {
-    color: '#64748b',
+    color: AppColors.textMuted,
     fontSize: 12,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    fontFamily: 'monospace',
     marginTop: 2,
   },
-  sectionContainer: {
-    marginBottom: 18,
-  },
+  sectionContainer: { marginBottom: Spacing.five },
   sectionTitle: {
-    color: '#475569',
-    fontSize: 11,
-    fontWeight: '700',
+    color: AppColors.textMuted,
+    fontSize: 12,
+    fontWeight: FontWeight.bold as '700',
     letterSpacing: 1,
-    marginBottom: 8,
+    marginBottom: Spacing.two,
     textTransform: 'uppercase',
   },
   dateHighlightBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    backgroundColor: 'rgba(99, 102, 241, 0.08)',
-    borderRadius: 14,
-    padding: 12,
+    gap: Spacing.three,
+    backgroundColor: AppColors.surface2,
+    borderRadius: Radius.md,
+    padding: Spacing.three,
     borderWidth: 1,
-    borderColor: 'rgba(99, 102, 241, 0.15)',
+    borderColor: AppColors.border,
   },
-  dateHighlightEmoji: {
-    fontSize: 22,
-  },
+  dateHighlightEmoji: { fontSize: 22 },
   dateHighlightText: {
-    color: '#f1f5f9',
+    color: AppColors.textPrimary,
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: FontWeight.bold as '700',
   },
   dateHighlightSub: {
-    color: '#64748b',
-    fontSize: 11,
+    color: AppColors.textMuted,
+    fontSize: 12,
     marginTop: 2,
   },
   providerCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: 'rgba(30, 41, 59, 0.5)',
+    backgroundColor: AppColors.surface2,
     borderWidth: 1,
-    borderColor: 'rgba(51, 65, 85, 0.5)',
-    borderRadius: 14,
-    padding: 12,
+    borderColor: AppColors.border,
+    borderRadius: Radius.md,
+    padding: Spacing.three,
   },
   providerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: Spacing.two,
     flex: 1,
   },
   providerAvatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#6366f1',
+    backgroundColor: AppColors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   providerAvatarText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: FontWeight.bold as '700',
   },
   providerNameText: {
-    color: '#f1f5f9',
+    color: AppColors.textPrimary,
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: FontWeight.bold as '700',
   },
   providerServiceText: {
-    color: '#64748b',
+    color: AppColors.textMuted,
     fontSize: 12,
     marginTop: 2,
   },
-  providerRight: {
-    alignItems: 'flex-end',
-    marginLeft: 12,
+  providerAddress: {
+    color: AppColors.textMuted,
+    fontSize: 12,
+    marginTop: 4,
   },
-  ratingBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  ratingStars: {
-    color: '#fbbf24',
-    fontSize: 11,
-    letterSpacing: 1,
-  },
-  ratingNum: {
-    color: '#94a3b8',
-    fontSize: 11,
-    fontWeight: '600',
-  },
+  providerRight: { alignItems: 'flex-end', marginLeft: Spacing.three },
+  ratingBox: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  ratingStars: { color: AppColors.warning, fontSize: 12, letterSpacing: 1 },
+  ratingNum:   { color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.semibold as '600' },
   hourlyRateText: {
-    color: '#34d399',
+    color: AppColors.success,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: FontWeight.bold as '700',
     marginTop: 4,
   },
   noProviderCard: {
-    backgroundColor: 'rgba(30, 41, 59, 0.5)',
+    backgroundColor: AppColors.surface2,
     borderWidth: 1,
-    borderColor: 'rgba(51, 65, 85, 0.3)',
-    borderRadius: 12,
-    padding: 14,
+    borderColor: AppColors.border,
+    borderRadius: Radius.md,
+    padding: Spacing.three,
     alignItems: 'center',
   },
   noProviderText: {
-    color: '#64748b',
+    color: AppColors.textMuted,
     fontSize: 13,
     fontStyle: 'italic',
   },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(30, 41, 59, 0.5)',
-    borderRadius: 12,
-    padding: 12,
+    gap: Spacing.two,
+    backgroundColor: AppColors.surface2,
+    borderRadius: Radius.md,
+    padding: Spacing.three,
     borderWidth: 1,
-    borderColor: 'rgba(51, 65, 85, 0.3)',
+    borderColor: AppColors.border,
   },
-  infoIcon: {
-    fontSize: 14,
-  },
-  infoText: {
-    color: '#94a3b8',
-    fontSize: 13,
-    flex: 1,
-  },
-  costText: {
-    color: '#f1f5f9',
-    fontSize: 14,
-    fontWeight: '700',
-  },
+  infoIcon: { fontSize: 14 },
+  infoText: { color: AppColors.textSecondary, fontSize: 13, flex: 1 },
+  costText: { color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold as '700' },
   requestBox: {
-    backgroundColor: 'rgba(30, 41, 59, 0.3)',
-    borderRadius: 12,
-    padding: 12,
+    backgroundColor: AppColors.surface2,
+    borderRadius: Radius.md,
+    padding: Spacing.three,
     borderWidth: 1,
-    borderColor: 'rgba(51, 65, 85, 0.2)',
+    borderColor: AppColors.border,
   },
   requestBoxText: {
-    color: '#64748b',
-    fontSize: 12,
+    color: AppColors.textMuted,
+    fontSize: 13,
     lineHeight: 18,
     fontStyle: 'italic',
   },
-  trackBtn: {
-    backgroundColor: '#6366f1',
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 10,
-    marginBottom: 8,
-    shadowColor: '#6366f1',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-  trackBtnText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
+  trackingActions: { gap: Spacing.two, marginTop: Spacing.two },
+  secondaryBtn: {
+    backgroundColor: AppColors.surface2,
   },
   closeBtn: {
-    backgroundColor: 'rgba(51, 65, 85, 0.3)',
-    borderRadius: 14,
-    paddingVertical: 13,
+    marginTop: Spacing.four,
+    backgroundColor: AppColors.surface2,
+    borderRadius: Radius.md,
+    paddingVertical: Spacing.three,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(100, 116, 139, 0.2)',
+    borderColor: AppColors.border,
   },
-  closeBtnText: {
-    color: '#94a3b8',
-    fontSize: 14,
-    fontWeight: '600',
-  },
+  closeBtnText: { color: AppColors.textSecondary, fontSize: 14, fontWeight: FontWeight.semibold as '600' },
 });

@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 import logging
 
-logger = logging.getLogger("serviceflow")
+logger = logging.getLogger("kaameasy")
 
 
 def _get_request_id(request: Request) -> str:
@@ -124,3 +124,9 @@ class ValidationException(HTTPException):
     def __init__(self, detail: str = "Validation failed — please check your input."):
         # 422 Unprocessable Entity status code ke sath HTTPException ko call karein
         super().__init__(status_code=422, detail=detail)
+
+
+class JobAlreadyTakenError(HTTPException):
+    """Raised when a provider tries to accept a job another provider already took."""
+    def __init__(self, detail: str = "This job has already been accepted by another provider."):
+        super().__init__(status_code=409, detail=detail)

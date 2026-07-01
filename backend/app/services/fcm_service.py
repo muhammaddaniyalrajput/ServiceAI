@@ -10,7 +10,7 @@ import logging
 import firebase_admin
 from firebase_admin import messaging
 
-logger = logging.getLogger("serviceflow")
+logger = logging.getLogger("kaameasy")
 
 
 def send_fcm(fcm_payload: dict, device_token: str | None = None) -> bool:

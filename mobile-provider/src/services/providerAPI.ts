@@ -1,7 +1,7 @@
 /**
  * Provider API Service Layer
  *
- * Handles all HTTP calls to the ServiceFlow AI backend provider endpoints.
+ * Handles all HTTP calls to the KaamEasy AI backend provider endpoints.
  * Uses the provider's Firebase ID token for authorization.
  *
  * Endpoints:
@@ -87,6 +87,7 @@ export interface ProviderJob {
   service_type: string;
   customer_name: string;
   customer_phone: string;
+  customer_address: string;
   customer_coordinates: { latitude: number; longitude: number };
   location_description: string;
   requested_at: string;
@@ -247,6 +248,18 @@ class ProviderAPIService {
   }
 
   /**
+   * 1c. POST /provider/fcm-token
+   * Register this device's push token so the backend can deliver job alerts.
+   */
+  async registerFcmToken(fcm_token: string): Promise<void> {
+    try {
+      await this.axiosInstance.post('/provider/fcm-token', { fcm_token });
+    } catch (error: any) {
+      handleAPIError(error, 'Failed to register device token');
+    }
+  }
+
+  /**
    * 2. POST /provider/status
    * Toggle provider availability
    */
@@ -344,29 +357,29 @@ class ProviderAPIService {
   }
 
   /**
-   * 7. POST /provider/jobs/{booking_id}/accept
-   * Accept a pending broadcast job
+   * 7. Accept a pending broadcast job.
+   * @deprecated Use respondToJob(booking_id, 'accept'). Kept as a thin alias
+   * so all accepts flow through the single, race-safe /respond endpoint.
    */
   async acceptJob(booking_id: string): Promise<ProviderJobRespondResponse> {
-    try {
-      const response = await this.axiosInstance.post<ProviderJobRespondResponse>(
-        `/provider/jobs/${booking_id}/accept`
-      );
-      return response.data;
-    } catch (error: any) {
-      handleAPIError(error, 'Failed to accept job');
-    }
+    return this.respondToJob(booking_id, 'accept');
   }
 
   /**
    * 8. POST /{booking_id}/chat
-   * Send a negotiation chat message
+   * Send a negotiation chat message. The sender UID is derived server-side
+   * from the Firebase bearer token — the client does not (and must not) claim
+   * a UID it does not own.
    */
-  async sendChatMessage(booking_id: string, text: string): Promise<any> {
+  async sendChatMessage(
+    booking_id: string,
+    text: string,
+    sender_type: 'customer' | 'provider' | 'system' = 'provider'
+  ): Promise<any> {
     try {
       const response = await this.axiosInstance.post(
         `/${booking_id}/chat`,
-        { sender: 'provider', text }
+        { sender_type, text }
       );
       return response.data;
     } catch (error: any) {

@@ -19,7 +19,22 @@ export interface BookServicePayload {
   booking_id: string;
   provider_id: string;
   intent: Record<string, unknown>;
+  customer_name: string;
+  customer_phone: string;
+  customer_address: string;
+  customer_coordinates: { latitude: number; longitude: number };
   device_token: string | null;
+}
+
+/**
+ * Chat message payload. The backend derives the sender UID from the Firebase
+ * bearer token in the Authorization header (set by the request interceptor above)
+ * — the client must NOT claim a UID it does not own. We only declare the
+ * `sender_type` (which side of the chat is sending) and the `text`.
+ */
+export interface ChatMessagePayload {
+  sender_type: 'customer' | 'provider' | 'system';
+  text: string;
 }
 
 /** Pydantic field error shape returned by FastAPI 422 responses */
@@ -219,6 +234,12 @@ export async function bookService(
   bookingId: string,
   providerId: string,
   intent: Record<string, unknown>,
+  customer: {
+    name: string;
+    phone: string;
+    address: string;
+    coordinates: { latitude: number; longitude: number };
+  },
   deviceToken?: string,
 ) {
   try {
@@ -226,6 +247,10 @@ export async function bookService(
       booking_id: bookingId,
       provider_id: providerId,
       intent,
+      customer_name: customer.name,
+      customer_phone: customer.phone,
+      customer_address: customer.address,
+      customer_coordinates: customer.coordinates,
       device_token: deviceToken ?? null,
     };
     const response = await apiClient.post('/book-service', payload);
@@ -253,9 +278,21 @@ export async function getBookingTracking(bookingId: string) {
   }
 }
 
-export async function sendChatMessage(bookingId: string, sender: string, text: string) {
+/**
+ * Send a chat message for a booking.
+ *
+ * The backend derives the sender UID from the Firebase bearer token in the
+ * Authorization header. The body `sender_type` field identifies whether the
+ * message originated from the customer, the provider, or the system.
+ */
+export async function sendChatMessage(
+  bookingId: string,
+  text: string,
+  senderType: 'customer' | 'provider' | 'system' = 'customer',
+) {
   try {
-    const response = await apiClient.post(`/${bookingId}/chat`, { sender, text });
+    const payload: ChatMessagePayload = { sender_type: senderType, text };
+    const response = await apiClient.post(`/${bookingId}/chat`, payload);
     return response.data;
   } catch (error) {
     throw mapError(error);

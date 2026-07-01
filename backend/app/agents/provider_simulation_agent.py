@@ -21,7 +21,7 @@ from app.services import firebase_db as db
 from app.services.fcm_service import send_fcm
 from app.models.schemas import Provider, IntentOutput
 
-logger = logging.getLogger("serviceflow")
+logger = logging.getLogger("kaameasy")
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -71,7 +71,7 @@ def _send_status_notification(
     body = messages.get(status, f"Booking status updated to: {status}")
     payload = {
         "notification": {
-            "title": "ServiceFlow AI — Booking Update",
+            "title": "KaamEasy AI — Booking Update",
             "body": body,
         },
         "data": {
@@ -234,7 +234,7 @@ def run_provider_simulation(
             reasoning=(
                 f"{provider.name} has completed the '{intent.service_type}' service. "
                 f"Total estimated cost: PKR {provider.hourly_rate * 2}. "
-                f"Thank you for using ServiceFlow AI!"
+                f"Thank you for using KaamEasy AI!"
             ),
         )]
         db.save_agent_trace(booking_id, logs)

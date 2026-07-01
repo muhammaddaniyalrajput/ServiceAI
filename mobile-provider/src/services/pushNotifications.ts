@@ -11,6 +11,7 @@
 import { useEffect, useRef } from 'react';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
+import { Platform } from 'react-native';
 
 // Configure notification handler
 // SDK v56 requires shouldShowBanner + shouldShowList in addition to shouldShowAlert
@@ -28,6 +29,11 @@ Notifications.setNotificationHandler({
  * Get or create FCM token for this device
  */
 export const getPushTokenAsync = async (): Promise<string | null> => {
+  if (Platform.OS === 'web') {
+    console.warn('Push tokens are not supported on web client.');
+    return null;
+  }
+
   if (!Device.isDevice) {
     console.warn('Push tokens are only available on physical devices.');
     return null;

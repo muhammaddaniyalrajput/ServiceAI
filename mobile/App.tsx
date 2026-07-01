@@ -62,6 +62,12 @@ export default function App() {
   const [appState, setAppState] = useState<AppState>(null);
 
   useEffect(() => {
+    if (Platform.OS === 'web') {
+      document.title = 'KaamEasy AI';
+    }
+  }, []);
+
+  useEffect(() => {
     // ─── One-time setup tasks (push notifications, etc.) ─────────────────────
     async function setupApp() {
       const isExpoGo =

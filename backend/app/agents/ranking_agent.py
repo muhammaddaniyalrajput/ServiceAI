@@ -22,7 +22,7 @@ from app.core.config import settings
 from app.core.logger import log_agent
 from app.models.schemas import IntentOutput, Provider, RankedProvider, Urgency
 
-logger = logging.getLogger("serviceflow")
+logger = logging.getLogger("kaameasy")
 
 client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
@@ -137,6 +137,20 @@ def run_ranking_agent(
         scored.append(RankedProvider(provider=p, score=score, score_reason=reason))
 
     scored.sort(key=lambda x: x.score, reverse=True)
+
+    # Guard: no providers to rank (discovery returned nothing). Return empty
+    # so the caller can surface a "no providers available" result instead of
+    # crashing with IndexError.
+    if not scored:
+        logs.append(log_agent(
+            booking_id=booking_id,
+            agent="Ranking Agent",
+            action="No providers to rank",
+            status="processing",
+            reasoning="Provider discovery returned no candidates; nothing to score.",
+        ))
+        return [], logs
+
     top = scored[0]
 
     # Enhance top-pick reasoning via Gemini

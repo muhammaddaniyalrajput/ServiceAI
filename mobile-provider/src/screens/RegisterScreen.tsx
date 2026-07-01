@@ -72,8 +72,9 @@ export default function ProviderRegisterScreen() {
         params: { email: user.email },
       });
     } catch (err: any) {
-      setError(err.message || 'Registration failed');
-      Alert.alert('Registration Error', error);
+      const message = err.message || 'Registration failed';
+      setError(message);
+      Alert.alert('Registration Error', message);
     } finally {
       setLoading(false);
     }
@@ -82,7 +83,7 @@ export default function ProviderRegisterScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
-        <Text style={styles.title}>Join ServiceFlow</Text>
+        <Text style={styles.title}>Join KaamEasy</Text>
         <Text style={styles.subtitle}>Register as a service provider</Text>
       </View>
 

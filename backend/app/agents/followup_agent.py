@@ -42,7 +42,7 @@ def run_followup_agent(
         },
         "loyalty": {
             "points_earned": 50,
-            "message":       "🎉 You earned 50 ServiceFlow points! Use them on your next booking.",
+            "message":       "🎉 You earned 50 KaamEasy points! Use them on your next booking.",
         },
     }
 

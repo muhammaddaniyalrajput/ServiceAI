@@ -1,4 +1,4 @@
-# ServiceFlow AI — Backend
+# KaamEasy AI — Backend
 
 Agentic AI Service Orchestration Platform. Accepts natural language booking requests in **English, Urdu, and Roman Urdu** and orchestrates a multi-agent pipeline to discover, rank, book, notify, and follow up on local service providers.
 

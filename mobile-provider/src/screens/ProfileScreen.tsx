@@ -19,6 +19,7 @@ import {
   Alert,
   ActivityIndicator,
   TextInput,
+  Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { signOut } from 'firebase/auth';
@@ -470,7 +471,15 @@ export default function ProfileScreen() {
           <Text style={styles.settingButtonArrow}>→</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.settingButton} disabled={loading}>
+        <TouchableOpacity 
+          style={styles.settingButton} 
+          disabled={loading}
+          onPress={() => {
+            Linking.openURL('mailto:support@kaameasy.ai').catch(() =>
+              Alert.alert('Support', 'Visit kaameasy.ai for help and support.')
+            );
+          }}
+        >
           <Text style={styles.settingButtonText}>Support & Help</Text>
           <Text style={styles.settingButtonArrow}>→</Text>
         </TouchableOpacity>
@@ -493,7 +502,7 @@ export default function ProfileScreen() {
 
       {/* Version Info */}
       <View style={styles.footerContainer}>
-        <Text style={styles.footerText}>ServiceFlow Provider App v1.0.0</Text>
+        <Text style={styles.footerText}>KaamEasy Provider App v1.0.0</Text>
       </View>
     </ScrollView>
   );

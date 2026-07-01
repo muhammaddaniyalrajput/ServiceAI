@@ -94,8 +94,9 @@ export default function EmailVerificationScreen() {
         Alert.alert('Success', 'Verification email sent! Check your inbox.');
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to resend email');
-      Alert.alert('Error', error);
+      const message = err.message || 'Failed to resend email';
+      setError(message);
+      Alert.alert('Error', message);
     }
   };
 

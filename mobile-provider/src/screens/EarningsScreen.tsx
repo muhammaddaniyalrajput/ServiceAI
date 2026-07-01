@@ -262,7 +262,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   totalEarningsCard: {
-    backgroundColor: 'linear-gradient(135deg, #003366 0%, #00bfff20 100%)',
+    // RN StyleSheet does not support CSS linear-gradient; use a solid deep-navy
+    // (the gradient's start color). For a true gradient, add expo-linear-gradient.
+    backgroundColor: '#003366',
     borderRadius: 16,
     padding: 24,
     marginBottom: 20,

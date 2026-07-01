@@ -1,6 +1,7 @@
 /**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
+ * KaamEasy Provider — cyan-led design tokens.
+ * Mirrors mobile/src/constants/theme.ts: same token shapes, distinct hex values.
+ * All provider screens must import from this file instead of inlining hex strings.
  */
 
 import '@/global.css';
@@ -25,6 +26,50 @@ export const Colors = {
 } as const;
 
 export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
+
+/**
+ * AppColors — Semantic design tokens for the KaamEasy Provider app.
+ * All provider screens should reference these instead of raw hex strings.
+ */
+export const AppColors = {
+  // ── Backgrounds ──────────────────────────────────────────────
+  bg:           '#1a1a1a',   // Root/page background
+  surface:      '#2a2a2a',   // Card / sheet background
+  surface2:     '#333333',   // Elevated element (chips, badges)
+  overlay:      '#404040',   // Input backgrounds, secondary buttons
+
+  // ── Borders ──────────────────────────────────────────────────
+  border:       '#404040',
+  borderSubtle: '#333333',
+
+  // ── Brand / Status colours ────────────────────────────────────
+  primary:      '#00bfff',   // Cyan – main accent
+  success:      '#00ff88',   // Green – positive / accepted
+  warning:      '#ff8800',   // Amber – pending / caution
+  danger:       '#ff4444',   // Red – error / decline
+  info:         '#00bfff',   // Blue – informational (alias of primary for cyan-led app)
+  purple:       '#8b5cf6',   // Purple – special states
+
+  // ── Text ─────────────────────────────────────────────────────
+  textPrimary:   '#ffffff',
+  textSecondary: '#aaaaaa',
+  textMuted:     '#666666',
+  textDisabled:  '#525252',
+
+  // ── Earnings card ────────────────────────────────────────────
+  earningsBg:    '#003366',
+
+  // ── State — soft-tinted variants for badges & pills ──────────
+  state: {
+    success: { bg: 'rgba(0,255,136,0.10)', text: '#00ff88', border: 'rgba(0,255,136,0.30)' },
+    warning: { bg: 'rgba(255,136,0,0.10)', text: '#ff8800', border: 'rgba(255,136,0,0.30)' },
+    danger:  { bg: 'rgba(255,68,68,0.10)', text: '#ff8888', border: 'rgba(255,68,68,0.30)' },
+    info:    { bg: 'rgba(0,191,255,0.10)', text: '#00bfff', border: 'rgba(0,191,255,0.30)' },
+    neutral: { bg: 'rgba(170,170,170,0.10)', text: '#aaaaaa', border: 'rgba(170,170,170,0.30)' },
+  },
+} as const;
+
+export type AppStateToken = keyof typeof AppColors.state;
 
 export const Fonts = Platform.select({
   ios: {
@@ -52,14 +97,60 @@ export const Fonts = Platform.select({
 });
 
 export const Spacing = {
+  zero: 0,
+  hairline: 1,
+  px: 2,
   half: 2,
   one: 4,
+  oneHalf: 6,
   two: 8,
-  three: 16,
-  four: 24,
-  five: 32,
-  six: 64,
+  three: 12,
+  four: 16,
+  five: 20,
+  six: 24,
+  eight: 32,
+  ten: 40,
+  twelve: 48,
+  sixteen: 64,
 } as const;
 
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
 export const MaxContentWidth = 800;
+
+export const Radius = {
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  '2xl': 28,
+  full: 999,
+} as const;
+
+export const FontWeight = {
+  regular: '400',
+  medium: '500',
+  semibold: '600',
+  bold: '700',
+  extrabold: '800',
+} as const;
+
+export type FontWeightKey = keyof typeof FontWeight;
+
+export const Typography = {
+  caption: { size: 12, lineHeight: 16, weight: 'medium'    as FontWeightKey },
+  bodySm:  { size: 13, lineHeight: 18, weight: 'regular'   as FontWeightKey },
+  body:    { size: 14, lineHeight: 20, weight: 'regular'   as FontWeightKey },
+  bodyLg:  { size: 15, lineHeight: 22, weight: 'regular'   as FontWeightKey },
+  label:   { size: 13, lineHeight: 18, weight: 'semibold'  as FontWeightKey },
+  h4:      { size: 16, lineHeight: 22, weight: 'bold'      as FontWeightKey },
+  h3:      { size: 18, lineHeight: 24, weight: 'bold'      as FontWeightKey },
+  h2:      { size: 22, lineHeight: 28, weight: 'extrabold' as FontWeightKey },
+  h1:      { size: 28, lineHeight: 34, weight: 'extrabold' as FontWeightKey },
+  display: { size: 32, lineHeight: 40, weight: 'extrabold' as FontWeightKey },
+} as const;
+
+export const Shadow = {
+  sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 },  shadowOpacity: 0.12, shadowRadius: 2,  elevation: 1 },
+  md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 },  shadowOpacity: 0.20, shadowRadius: 8,  elevation: 4 },
+  lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 },  shadowOpacity: 0.28, shadowRadius: 16, elevation: 8 },
+} as const;

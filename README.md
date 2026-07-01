@@ -1,6 +1,6 @@
-# ServiceFlow AI
+# KaamEasy AI
 
-ServiceFlow AI is a production-grade, double-sided **Agentic AI Service Orchestration Platform**. It allows customers to book home services using natural language (English, Urdu, or Roman Urdu) parsed by LLM agents, while enabling service providers to manage bookings, track earnings, and stream real-time location tracking in a cohesive double-sided marketplace.
+KaamEasy AI is a production-grade, double-sided **Agentic AI Service Orchestration Platform**. It allows customers to book home services using natural language (English, Urdu, or Roman Urdu) parsed by LLM agents, while enabling service providers to manage bookings, track earnings, and stream real-time location tracking in a cohesive double-sided marketplace.
 
 The system features a thread-safe multi-agent DAG engine (with 7 specialized agents), a FastAPI backend, and two React Native Expo mobile apps (Customer App and Provider App) backed by Firebase Firestore.
 

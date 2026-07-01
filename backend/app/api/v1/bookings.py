@@ -1,22 +1,22 @@
 import time
 import asyncio
 import threading
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from app.models.schemas import (
     BookServiceRequest,
     BookServiceResponse,
     BookingStatusResponse,
-    AgentLogsResponse,
     AgentTraceResponse,
     AgentTraceStep,
     BookingStatus,
     RankedProvider,
 )
+from app.core.auth import get_verified_uid
 from app.orchestrator.workflow import orchestrate_book_service
 from app.services import firebase_db as db
 import logging
 
-logger = logging.getLogger("serviceflow")
+logger = logging.getLogger("kaameasy")
 
 router = APIRouter()
 
@@ -100,13 +100,17 @@ def get_cached_ranked(booking_id: str) -> list:
 
 
 @router.post("/book-service", response_model=BookServiceResponse, summary="Confirm a service booking")
-async def book_service(payload: BookServiceRequest) -> BookServiceResponse:
+async def book_service(
+    payload: BookServiceRequest,
+    uid: str = Depends(get_verified_uid),
+) -> BookServiceResponse:
     """
     **Stage 3 (Final) of the booking pipeline.**
     Runs Booking Agent → Notification Agent → Follow-Up Agent.
 
     Includes idempotency guard: rejects duplicate submissions for the same booking.
     """
+    logger.debug("Authenticated booking request for uid=%s", uid)
     # ── Idempotency check: if already confirmed, return early ──
     existing = await asyncio.to_thread(db.get_booking, payload.booking_id)
     if existing and existing.get("status") == "confirmed":
@@ -133,25 +137,35 @@ async def book_service(payload: BookServiceRequest) -> BookServiceResponse:
                 provider_id=payload.provider_id,
                 intent=payload.intent,
                 ranked_providers=ranked,
+                customer_name=payload.customer_name,
+                customer_phone=payload.customer_phone,
+                customer_address=payload.customer_address,
+                customer_coordinates=payload.customer_coordinates,
                 device_token=payload.device_token,
             )
 
         result = await asyncio.to_thread(run_booking)
         return result
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+        logger.warning("Booking not found: booking_id=%s err=%s", payload.booking_id, exc)
+        raise HTTPException(status_code=404, detail="Booking or provider not found.")
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        logger.exception("Unexpected error in book_service: booking_id=%s", payload.booking_id)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
     finally:
         with _lock_mutex:
             _booking_locks.discard(payload.booking_id)
 
 
 @router.get("/booking-status/{booking_id}", response_model=BookingStatusResponse, summary="Get booking status")
-async def get_booking_status(booking_id: str) -> BookingStatusResponse:
+async def get_booking_status(
+    booking_id: str,
+    uid: str = Depends(get_verified_uid),
+) -> BookingStatusResponse:
     """
     Returns the current status and details of a booking by its ID.
     """
+    logger.debug("Authenticated booking status lookup for uid=%s booking_id=%s", uid, booking_id)
     data = await asyncio.to_thread(db.get_booking, booking_id)
     if not data:
         raise HTTPException(status_code=404, detail=f"Booking '{booking_id}' not found.")
@@ -170,10 +184,14 @@ async def get_booking_status(booking_id: str) -> BookingStatusResponse:
 
 
 @router.get("/agent-logs/{booking_id}", response_model=AgentTraceResponse, summary="Get agent reasoning logs")
-async def get_agent_logs(booking_id: str) -> AgentTraceResponse:
+async def get_agent_logs(
+    booking_id: str,
+    uid: str = Depends(get_verified_uid),
+) -> AgentTraceResponse:
     """
     Returns the full agent reasoning trace for a booking.
     """
+    logger.debug("Authenticated agent log lookup for uid=%s booking_id=%s", uid, booking_id)
     cached = _agent_logs_cache.get(booking_id)
     if cached:
         return cached
@@ -190,12 +208,16 @@ async def get_agent_logs(booking_id: str) -> AgentTraceResponse:
 
 
 @router.get("/booking-tracking/{booking_id}", summary="Get live provider tracking data")
-async def get_booking_tracking(booking_id: str):
+async def get_booking_tracking(
+    booking_id: str,
+    uid: str = Depends(get_verified_uid),
+):
     """
     Returns real-time tracking data for a booking:
     status, provider live coordinates, user coordinates, and ETA.
     Used by the mobile app's live map tracking screen.
     """
+    logger.debug("Authenticated tracking lookup for uid=%s booking_id=%s", uid, booking_id)
     data = await asyncio.to_thread(db.get_booking_tracking, booking_id)
     if not data:
         raise HTTPException(status_code=404, detail=f"Booking '{booking_id}' not found.")
@@ -206,30 +228,55 @@ from pydantic import BaseModel
 class ChatMessageRequest(BaseModel):
     sender: str
     text: str
+    sender_type: str = "system"
 
 @router.post("/{booking_id}/chat", summary="Send a chat message for a booking")
-async def send_chat_message(booking_id: str, payload: ChatMessageRequest):
+async def send_chat_message(
+    booking_id: str,
+    payload: ChatMessageRequest,
+    uid: str = Depends(get_verified_uid),
+):
     """
     Append a chat message to the booking's chat history.
     """
     try:
-        updated = await asyncio.to_thread(db.add_chat_message, booking_id, payload.sender, payload.text)
+        logger.debug(
+            "Authenticated chat send for uid=%s booking_id=%s sender_type=%s",
+            uid,
+            booking_id,
+            payload.sender_type,
+        )
+        updated = await asyncio.to_thread(
+            db.add_chat_message,
+            booking_id,
+            payload.sender,
+            payload.text,
+            payload.sender_type,
+        )
         if not updated:
             raise HTTPException(status_code=404, detail="Booking not found or update failed")
         return {"success": True, "chat_messages": updated.get("chat_messages", [])}
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+    except HTTPException:
+        raise  # re-raise 404 not found as-is
+    except Exception:
+        logger.exception("Error sending chat message: booking_id=%s", booking_id)
+        raise HTTPException(status_code=500, detail="Failed to send chat message.")
 
 
 class ConfirmBookingRequest(BaseModel):
     scheduled_time: str
 
 @router.post("/{booking_id}/confirm", summary="Confirm a booking after negotiation")
-async def confirm_negotiated_booking(booking_id: str, payload: ConfirmBookingRequest):
+async def confirm_negotiated_booking(
+    booking_id: str,
+    payload: ConfirmBookingRequest,
+    uid: str = Depends(get_verified_uid),
+):
     """
     Finalize the booking status to 'confirmed' with an agreed upon scheduled_time.
     """
     try:
+        logger.debug("Authenticated booking confirm for uid=%s booking_id=%s", uid, booking_id)
         booking = await asyncio.to_thread(db.get_booking, booking_id)
         if not booking:
             raise HTTPException(status_code=404, detail="Booking not found")
@@ -243,11 +290,28 @@ async def confirm_negotiated_booking(booking_id: str, payload: ConfirmBookingReq
         db_instance = db._get_db()
         if db_instance:
             db_instance.collection("bookings").document(booking_id).update(updates)
+            from firebase_admin import firestore
+
+            db_instance.collection("bookings").document(booking_id).collection("messages").add({
+                "text": f"Booking confirmed for {payload.scheduled_time}.",
+                "senderId": "system",
+                "senderType": "system",
+                "createdAt": firestore.SERVER_TIMESTAMP,
+            })
         else:
             if booking_id in db._mock_store:
                 db._mock_store[booking_id].update(updates)
+                db._mock_store[booking_id].setdefault("messages", []).append({
+                    "text": f"Booking confirmed for {payload.scheduled_time}.",
+                    "senderId": "system",
+                    "senderType": "system",
+                    "createdAt": time.time(),
+                })
                 
         return {"success": True, "status": "confirmed", "scheduled_time": payload.scheduled_time}
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+    except HTTPException:
+        raise  # re-raise 404 not found as-is
+    except Exception:
+        logger.exception("Error confirming booking: booking_id=%s", booking_id)
+        raise HTTPException(status_code=500, detail="Failed to confirm booking. Please try again.")
 

@@ -28,7 +28,7 @@ from app.api.v1.bookings  import router as bookings_router
 from app.api.v1.provider  import router as provider_router
 from pydantic import ValidationError
 
-logger = logging.getLogger("serviceflow")
+logger = logging.getLogger("kaameasy")
 
 app = FastAPI(
     title=settings.PROJECT_NAME,

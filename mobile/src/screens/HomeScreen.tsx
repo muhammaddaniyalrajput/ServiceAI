@@ -25,6 +25,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../types/navigation';
 import { analyzeRequest } from '../services/api';
 import { auth } from '../firebase';
 
@@ -118,7 +120,7 @@ const SkeletonBar: React.FC<{ width: number | `${number}%`; height?: number; mar
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function HomeScreen() {
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [inputText, setInputText]     = useState('');
   const [isLoading, setIsLoading]     = useState(false);
   const [intentResult, setIntentResult] = useState<any>(null);
@@ -185,7 +187,7 @@ export default function HomeScreen() {
       {/* ── Header ── */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Text style={styles.brandTag}>ServiceFlow AI</Text>
+          <Text style={styles.brandTag}>KaamEasy AI</Text>
           <Text style={styles.greeting}>Hello, {greeting} 👋</Text>
           <Text style={styles.headerSub}>Describe your service need in any language</Text>
         </View>

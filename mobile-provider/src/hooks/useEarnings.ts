@@ -129,8 +129,11 @@ export const calculateEarningsStats = (
   const jobs_completed_month = jobs.filter((job) => job.completed_at >= monthAgo).length;
 
   const average_job_value = jobs.length > 0 ? Math.round(total_earnings / jobs.length) : 0;
-  const average_rating = jobs.length > 0
-    ? jobs.filter((j) => j.rating).reduce((sum, j) => sum + (j.rating || 0), 0) / jobs.filter((j) => j.rating).length
+  // Only average over jobs that actually have a rating, and guard against
+  // dividing by zero (jobs exist but none are rated) which would yield NaN.
+  const ratedJobs = jobs.filter((j) => j.rating);
+  const average_rating = ratedJobs.length > 0
+    ? ratedJobs.reduce((sum, j) => sum + (j.rating || 0), 0) / ratedJobs.length
     : 0;
 
   const completion_rate =

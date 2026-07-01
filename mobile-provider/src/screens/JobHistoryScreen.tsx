@@ -1,12 +1,16 @@
 /**
- * Job History Screen
+ * Job History Screen — KaamEasy Provider.
  *
  * Shows all completed jobs with:
  * - Detailed job information
  * - Customer ratings and feedback
  * - Earnings per job
- * - Job duration
  * - Filter and sort options
+ *
+ * Refactor notes (Phase 3 de-clutter):
+ *   - All hex strings pulled into `AppColors` / `Spacing` / `Radius` / `FontWeight`.
+ *   - Tiny 10–11px fonts bumped to 12+ for legibility.
+ *   - Earnings card uses theme tokens.
  */
 
 import React, { useState, useMemo } from 'react';
@@ -19,9 +23,12 @@ import {
   ActivityIndicator,
   FlatList,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useEarningsStats } from '@/hooks/useEarnings';
 import { useProviderStore } from '@/store/providerStore';
+import { AppColors, FontWeight, Radius, Spacing } from '@/constants/theme';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 type SortBy = 'recent' | 'earnings' | 'rating';
 
@@ -39,12 +46,10 @@ export default function JobHistoryScreen() {
   const sortedAndFiltered = useMemo(() => {
     let filtered = [...jobs];
 
-    // Filter by rating
     if (filterRating) {
       filtered = filtered.filter((job) => job.rating && job.rating >= filterRating);
     }
 
-    // Sort
     switch (sortBy) {
       case 'recent':
         filtered.sort((a, b) => b.completed_at.getTime() - a.completed_at.getTime());
@@ -62,26 +67,33 @@ export default function JobHistoryScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#00bfff" />
-        <Text style={styles.loadingText}>Loading job history...</Text>
-      </View>
+      <SafeAreaView style={styles.root} edges={['top']}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={AppColors.primary} />
+          <Text style={styles.loadingText}>Loading job history…</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.root} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
           <Text style={styles.backArrow}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.title}>Job History</Text>
-        <View style={{ width: 40 }} />
+        <View style={styles.headerSpacer} />
       </View>
 
       {/* Summary Stats */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statsScroll}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.statsScroll}
+        contentContainerStyle={styles.statsContent}
+      >
         <View style={styles.statItem}>
           <Text style={styles.statNumber}>{stats.completed_jobs_count}</Text>
           <Text style={styles.statName}>Total Jobs</Text>
@@ -103,7 +115,7 @@ export default function JobHistoryScreen() {
       {/* Sort & Filter Controls */}
       <View style={styles.controls}>
         <View style={styles.sortContainer}>
-          <Text style={styles.controlLabel}>Sort:</Text>
+          <Text style={styles.controlLabel}>Sort</Text>
           <View style={styles.sortButtons}>
             {(['recent', 'earnings', 'rating'] as const).map((option) => (
               <TouchableOpacity
@@ -120,7 +132,7 @@ export default function JobHistoryScreen() {
         </View>
 
         <View style={styles.filterContainer}>
-          <Text style={styles.controlLabel}>Rating:</Text>
+          <Text style={styles.controlLabel}>Rating</Text>
           <View style={styles.filterButtons}>
             {[null, 3, 3.5, 4, 4.5].map((rating) => (
               <TouchableOpacity
@@ -145,19 +157,19 @@ export default function JobHistoryScreen() {
         scrollEnabled={false}
         renderItem={({ item }) => (
           <View style={styles.jobItem}>
-            {/* Top Row: Service & Earnings */}
             <View style={styles.jobHeader}>
-              <View style={{ flex: 1 }}>
+              <View style={styles.flex}>
                 <Text style={styles.jobService}>{item.service_type}</Text>
                 <Text style={styles.jobCustomer}>{item.customer_name}</Text>
               </View>
               <View style={styles.earningsBox}>
                 <Text style={styles.earningsLabel}>Earned</Text>
-                <Text style={styles.earningsValue}>PKR {(item.actual_earnings || item.total_estimated_cost).toLocaleString()}</Text>
+                <Text style={styles.earningsValue}>
+                  PKR {(item.actual_earnings || item.total_estimated_cost).toLocaleString()}
+                </Text>
               </View>
             </View>
 
-            {/* Middle Row: Rating & Duration */}
             <View style={styles.jobDetails}>
               <View style={styles.detailItem}>
                 <Text style={styles.detailLabel}>Rating</Text>
@@ -187,7 +199,6 @@ export default function JobHistoryScreen() {
               </View>
             </View>
 
-            {/* Bottom Row: Date */}
             <View style={styles.jobFooter}>
               <Text style={styles.jobDate}>
                 {new Intl.DateTimeFormat('en-PK', {
@@ -198,7 +209,15 @@ export default function JobHistoryScreen() {
                   minute: '2-digit',
                 }).format(item.completed_at)}
               </Text>
-              <TouchableOpacity style={styles.detailsButton}>
+              <TouchableOpacity
+                style={styles.detailsButton}
+                onPress={() =>
+                  router.push({
+                    pathname: '/job-detail',
+                    params: { booking_id: item.booking_id },
+                  })
+                }
+              >
                 <Text style={styles.detailsButtonText}>View Details →</Text>
               </TouchableOpacity>
             </View>
@@ -206,273 +225,191 @@ export default function JobHistoryScreen() {
         )}
       />
 
-      {sortedAndFiltered.length === 0 && (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyStateIcon}>📋</Text>
-          <Text style={styles.emptyStateText}>
-            {jobs.length === 0 ? 'No jobs completed yet' : 'No jobs match your filters'}
-          </Text>
-        </View>
-      )}
+      {sortedAndFiltered.length === 0 ? (
+        <EmptyState
+          icon="📋"
+          title={jobs.length === 0 ? 'No jobs completed yet' : 'No matches'}
+          body={
+            jobs.length === 0
+              ? 'Completed jobs and earnings will appear here once you finish your first job.'
+              : 'No completed jobs match the current filters.'
+          }
+        />
+      ) : null}
 
-      {error && (
+      {error ? (
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>⚠️ {error}</Text>
         </View>
-      )}
-    </View>
+      ) : null}
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#1a1a1a',
-  },
+  root: { flex: 1, backgroundColor: AppColors.bg },
+  flex: { flex: 1 },
+
   loadingContainer: {
     flex: 1,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: AppColors.bg,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  loadingText: {
-    color: '#aaa',
-    marginTop: 12,
-  },
+  loadingText: { color: AppColors.textSecondary, marginTop: Spacing.three },
+
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.four,
     borderBottomWidth: 1,
-    borderBottomColor: '#2a2a2a',
+    borderBottomColor: AppColors.surface2,
   },
+  headerSpacer: { width: 60 },
   backArrow: {
-    color: '#00bfff',
+    color: AppColors.primary,
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: FontWeight.semibold as '600',
   },
   title: {
     fontSize: 18,
-    fontWeight: '700',
-    color: '#fff',
+    fontWeight: FontWeight.bold as '700',
+    color: AppColors.textPrimary,
   },
-  statsScroll: {
-    flexGrow: 0,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#2a2a2a',
+
+  statsScroll: { flexGrow: 0 },
+  statsContent: {
+    paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.three,
+    gap: Spacing.three,
   },
   statItem: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: 8,
-    padding: 12,
-    marginRight: 12,
+    backgroundColor: AppColors.surface,
+    borderRadius: Radius.md,
+    padding: Spacing.three,
     alignItems: 'center',
     minWidth: 110,
   },
   statNumber: {
-    color: '#00ff88',
-    fontSize: 14,
-    fontWeight: '700',
+    color: AppColors.success,
+    fontSize: 15,
+    fontWeight: FontWeight.bold as '700',
     marginBottom: 4,
   },
   statName: {
-    color: '#aaa',
-    fontSize: 10,
+    color: AppColors.textSecondary,
+    fontSize: 12,
     textAlign: 'center',
   },
+
   controls: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.three,
     borderBottomWidth: 1,
-    borderBottomColor: '#2a2a2a',
+    borderBottomColor: AppColors.surface2,
   },
-  sortContainer: {
-    marginBottom: 12,
-  },
+  sortContainer: { marginBottom: Spacing.three },
   filterContainer: {},
   controlLabel: {
-    color: '#aaa',
-    fontSize: 11,
-    fontWeight: '600',
+    color: AppColors.textSecondary,
+    fontSize: 12,
+    fontWeight: FontWeight.semibold as '600',
     marginBottom: 6,
   },
-  sortButtons: {
-    flexDirection: 'row',
-    gap: 8,
-  },
+  sortButtons: { flexDirection: 'row', gap: Spacing.two },
   sortButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-    backgroundColor: '#2a2a2a',
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two - 2,
+    borderRadius: Radius.md,
+    backgroundColor: AppColors.surface,
     borderWidth: 1,
-    borderColor: '#404040',
+    borderColor: AppColors.border,
   },
-  sortButtonActive: {
-    backgroundColor: '#00bfff',
-    borderColor: '#00bfff',
-  },
-  sortButtonText: {
-    color: '#aaa',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  sortButtonTextActive: {
-    color: '#000',
-  },
-  filterButtons: {
-    flexDirection: 'row',
-    gap: 8,
-  },
+  sortButtonActive: { backgroundColor: AppColors.primary, borderColor: AppColors.primary },
+  sortButtonText: { color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.semibold as '600' },
+  sortButtonTextActive: { color: '#000' },
+
+  filterButtons: { flexDirection: 'row', gap: Spacing.two },
   filterButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-    backgroundColor: '#2a2a2a',
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two - 2,
+    borderRadius: Radius.md,
+    backgroundColor: AppColors.surface,
     borderWidth: 1,
-    borderColor: '#404040',
+    borderColor: AppColors.border,
   },
-  filterButtonActive: {
-    backgroundColor: '#00ff88',
-    borderColor: '#00ff88',
-  },
-  filterButtonText: {
-    color: '#aaa',
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  filterButtonTextActive: {
-    color: '#000',
-  },
-  listContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
+  filterButtonActive: { backgroundColor: AppColors.success, borderColor: AppColors.success },
+  filterButtonText: { color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.semibold as '600' },
+  filterButtonTextActive: { color: '#000' },
+
+  listContent: { paddingHorizontal: Spacing.four, paddingVertical: Spacing.three },
   jobItem: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
+    backgroundColor: AppColors.surface,
+    borderRadius: Radius.md,
+    padding: Spacing.three + 2,
+    marginBottom: Spacing.three,
     borderLeftWidth: 4,
-    borderLeftColor: '#00bfff',
+    borderLeftColor: AppColors.primary,
   },
   jobHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: Spacing.three,
   },
-  jobService: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  jobCustomer: {
-    color: '#aaa',
-    fontSize: 12,
-  },
+  jobService: { color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold as '700', marginBottom: 4 },
+  jobCustomer: { color: AppColors.textSecondary, fontSize: 12 },
   earningsBox: {
-    backgroundColor: '#003366',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    backgroundColor: AppColors.earningsBg,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
     alignItems: 'center',
   },
-  earningsLabel: {
-    color: '#aaa',
-    fontSize: 9,
-    marginBottom: 2,
-  },
-  earningsValue: {
-    color: '#00ff88',
-    fontSize: 12,
-    fontWeight: '700',
-  },
+  earningsLabel: { color: AppColors.textSecondary, fontSize: 12, marginBottom: 2 },
+  earningsValue: { color: AppColors.success, fontSize: 12, fontWeight: FontWeight.bold as '700' },
+
   jobDetails: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 12,
-    paddingBottom: 12,
+    gap: Spacing.three,
+    marginBottom: Spacing.three,
+    paddingBottom: Spacing.three,
     borderBottomWidth: 1,
-    borderBottomColor: '#333',
+    borderBottomColor: AppColors.borderSubtle,
   },
-  detailItem: {
-    flex: 1,
-  },
-  detailLabel: {
-    color: '#666',
-    fontSize: 10,
-    marginBottom: 4,
-  },
-  detailValue: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
+  detailItem: { flex: 1 },
+  detailLabel: { color: AppColors.textMuted, fontSize: 12, marginBottom: 4 },
+  detailValue: { color: AppColors.textPrimary, fontSize: 12, fontWeight: FontWeight.semibold as '600' },
   ratingContainer: {
-    backgroundColor: '#003366',
-    borderRadius: 6,
-    paddingHorizontal: 8,
+    backgroundColor: AppColors.earningsBg,
+    borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.two,
     paddingVertical: 4,
   },
-  ratingValue: {
-    color: '#00bfff',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  noRating: {
-    color: '#666',
-    fontSize: 11,
-    fontStyle: 'italic',
-  },
+  ratingValue: { color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.bold as '700' },
+  noRating: { color: AppColors.textMuted, fontSize: 12, fontStyle: 'italic' },
+
   jobFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  jobDate: {
-    color: '#666',
-    fontSize: 11,
-  },
+  jobDate: { color: AppColors.textMuted, fontSize: 12 },
   detailsButton: {
-    paddingHorizontal: 12,
+    paddingHorizontal: Spacing.three,
     paddingVertical: 6,
-    borderRadius: 6,
-    backgroundColor: '#003366',
+    borderRadius: Radius.sm,
+    backgroundColor: AppColors.earningsBg,
   },
-  detailsButtonText: {
-    color: '#00bfff',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  emptyState: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 40,
-  },
-  emptyStateIcon: {
-    fontSize: 48,
-    marginBottom: 12,
-  },
-  emptyStateText: {
-    color: '#666',
-    fontSize: 14,
-    textAlign: 'center',
-  },
+  detailsButtonText: { color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.semibold as '600' },
+
   errorContainer: {
-    backgroundColor: '#ff444420',
-    marginHorizontal: 16,
-    marginVertical: 12,
-    borderRadius: 8,
-    padding: 12,
+    backgroundColor: 'rgba(255,68,68,0.12)',
+    marginHorizontal: Spacing.four,
+    marginVertical: Spacing.three,
+    borderRadius: Radius.md,
+    padding: Spacing.three,
   },
-  errorText: {
-    color: '#ff8888',
-    fontSize: 12,
-  },
+  errorText: { color: '#ff8888', fontSize: 13 },
 });

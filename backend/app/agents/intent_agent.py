@@ -26,7 +26,7 @@ from app.core.config import settings
 from app.core.logger import log_agent
 from app.models.schemas import IntentOutput, Urgency
 
-logger = logging.getLogger("serviceflow")
+logger = logging.getLogger("kaameasy")
 
 client = genai.Client(api_key=settings.GEMINI_API_KEY)
 

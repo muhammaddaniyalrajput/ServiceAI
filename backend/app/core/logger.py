@@ -12,7 +12,7 @@ logging.basicConfig(
     format="%(message)s",
 )
 
-logger = logging.getLogger("serviceflow")
+logger = logging.getLogger("kaameasy")
 
 
 def _now_iso() -> str:

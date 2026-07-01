@@ -76,6 +76,12 @@ async function ensureAndroidChannel(): Promise<void> {
  * This function never throws. All errors are caught and logged.
  */
 export async function registerForPushNotificationsAsync(): Promise<string | undefined> {
+  // ── 0. Web check ────────────────────────────────────────────────────────
+  if (Platform.OS === 'web') {
+    console.log('[Push] Skipped: push notifications are not supported on web.');
+    return undefined;
+  }
+
   // ── 1. Physical device check ────────────────────────────────────────────
   if (!Device.isDevice) {
     console.log('[Push] Skipped: must use a physical device for push notifications.');

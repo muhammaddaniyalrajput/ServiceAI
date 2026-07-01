@@ -1,6 +1,6 @@
-# ServiceFlow AI — Quickstart Guide
+# KaamEasy AI — Quickstart Guide
 
-This guide will walk you through setting up and running the three main components of the ServiceFlow AI application:
+This guide will walk you through setting up and running the three main components of the KaamEasy AI application:
 1. **FastAPI Backend Server** (with Multi-Agent DAG Orchestrator)
 2. **Customer Mobile Application** (`mobile`)
 3. **Provider Mobile Application** (`mobile-provider`)
