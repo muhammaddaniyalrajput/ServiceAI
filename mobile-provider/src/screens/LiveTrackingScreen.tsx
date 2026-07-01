@@ -86,22 +86,27 @@ export default function LiveTrackingScreen() {
   // Zoom to show both provider and customer
   useEffect(() => {
     if (mapRef.current && job) {
-      mapRef.current.fitToCoordinates(
-        [
+      // The web fallback wrapper exposes a no-op `fitToCoordinates`,
+      // but we still guard with `typeof === 'function'` so the screen
+      // never crashes if a future wrapper variant forgets to stub it.
+      if (typeof mapRef.current.fitToCoordinates === 'function') {
+        mapRef.current.fitToCoordinates(
+          [
+            {
+              latitude: providerCoords.latitude,
+              longitude: providerCoords.longitude,
+            },
+            {
+              latitude: customerCoords.latitude,
+              longitude: customerCoords.longitude,
+            },
+          ],
           {
-            latitude: providerCoords.latitude,
-            longitude: providerCoords.longitude,
-          },
-          {
-            latitude: customerCoords.latitude,
-            longitude: customerCoords.longitude,
-          },
-        ],
-        {
-          edgePadding: { top: 100, right: 100, bottom: 100, left: 100 },
-          animated: true,
-        }
-      );
+            edgePadding: { top: 100, right: 100, bottom: 100, left: 100 },
+            animated: true,
+          }
+        );
+      }
     }
   }, [currentLocation, job]);
 

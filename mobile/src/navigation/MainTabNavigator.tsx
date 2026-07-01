@@ -1,5 +1,5 @@
 /**
- * MainTabNavigator — Bottom tab bar wrapping Home, Booking History, Profile.
+ * MainTabNavigator — Bottom tab bar wrapping Home, Bookings, Chat, Profile.
  *
  * Design: dark surface tabs with indigo active indicator, custom icon set.
  * No external icon library needed — uses emoji/unicode symbols as icons
@@ -12,6 +12,7 @@ import { MainTabParamList } from '../types/navigation';
 
 import HomeScreen           from '../screens/HomeScreen';
 import BookingHistoryScreen from '../screens/BookingHistoryScreen';
+import ChatInboxScreen      from '../screens/ChatInboxScreen';
 import ProfileScreen        from '../screens/ProfileScreen';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -97,6 +98,15 @@ export default function MainTabNavigator() {
           title:       'My Bookings',
           tabBarLabel: 'Bookings',
           tabBarIcon:  ({ focused }) => <TabIcon emoji="📋" focused={focused} label="Bookings" />,
+        }}
+      />
+      <Tab.Screen
+        name="ChatInbox"
+        component={ChatInboxScreen}
+        options={{
+          title:       'Messages',
+          tabBarLabel: 'Chat',
+          tabBarIcon:  ({ focused }) => <TabIcon emoji="💬" focused={focused} label="Chat" />,
         }}
       />
       <Tab.Screen

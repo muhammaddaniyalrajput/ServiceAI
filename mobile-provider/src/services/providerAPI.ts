@@ -117,6 +117,35 @@ export interface ProviderJobStatusUpdateResponse {
   updated_at: string;
 }
 
+/**
+ * Conversation (inbox) payload returned by the modular
+ * ``/api/v1/chat/inbox`` endpoint.
+ *
+ * Each row represents one active chat between a customer and a
+ * provider, scoped to a single booking. The provider app uses
+ * ``role='provider'`` (sees customer_name).
+ */
+export interface ChatInboxConversation {
+  conversation_id: string;
+  booking_id: string;
+  customer_id: string;
+  provider_id: string;
+  customer_name: string | null;
+  provider_name: string | null;
+  service_type: string | null;
+  last_message: string;
+  last_sender_type: 'customer' | 'provider' | 'system';
+  status: 'active' | 'archived';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatInboxResponse {
+  success: boolean;
+  conversations: ChatInboxConversation[];
+  total: number;
+}
+
 export class APIError extends Error {
   status?: number;
   constructor(message: string, status?: number) {
@@ -418,6 +447,34 @@ class ProviderAPIService {
       return response.data;
     } catch (error: any) {
       handleAPIError(error, 'Failed to confirm booking');
+    }
+  }
+
+  /**
+   * 10. GET /chat/inbox
+   *
+   * Fetch the conversation inbox for the authenticated provider.
+   * The backend resolves the user from the Firebase bearer token, so no
+   * ``provider_id`` is needed in the body.
+   *
+   *   - ``role``  — the provider app always uses ``'provider'`` here.
+   *   - ``status`` — defaults to ``'active'`` (the chat tab); pass
+   *                  ``'archived'`` for the archive view.
+   *
+   * The backend returns a list sorted by ``updated_at`` DESC
+   * (recent-first), matching what the inbox UI expects.
+   */
+  async getChatInbox(
+    role: 'customer' | 'provider' = 'provider',
+    status: 'active' | 'archived' = 'active',
+  ): Promise<ChatInboxResponse> {
+    try {
+      const response = await this.axiosInstance.get<ChatInboxResponse>('/chat/inbox', {
+        params: { role, status },
+      });
+      return response.data;
+    } catch (error: any) {
+      handleAPIError(error, 'Failed to load chat inbox');
     }
   }
 }

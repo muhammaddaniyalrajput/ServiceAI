@@ -57,5 +57,6 @@ export type RootStackParamList = {
 export type MainTabParamList = {
   Home:           undefined;
   BookingHistory: undefined;
+  ChatInbox:      undefined;
   Profile:        undefined;
 };

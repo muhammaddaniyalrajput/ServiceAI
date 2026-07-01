@@ -43,6 +43,39 @@ export interface ChatMessagePayload {
   text: string;
 }
 
+/**
+ * Conversation (inbox) payload returned by the modular
+ * ``/api/v1/chat/inbox`` endpoint.
+ *
+ * Each row represents one active chat between a customer and a
+ * provider, scoped to a single booking. The customer app uses
+ * ``role='customer'`` (sees provider_name), the provider app uses
+ * ``role='provider'`` (sees customer_name).
+ */
+export interface Conversation {
+  conversation_id: string;
+  booking_id: string;
+  customer_id: string;
+  provider_id: string;
+  customer_name: string | null;
+  provider_name: string | null;
+  service_type: string | null;
+  last_message: string;
+  last_sender_type: 'customer' | 'provider' | 'system';
+  status: 'active' | 'archived';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ConversationListResponse {
+  success: boolean;
+  conversations: Conversation[];
+  total: number;
+}
+
+export type ConversationRole = 'customer' | 'provider';
+export type ConversationStatus = 'active' | 'archived';
+
 /** Pydantic field error shape returned by FastAPI 422 responses */
 interface PydanticFieldError {
   loc: (string | number)[];
@@ -321,6 +354,33 @@ export async function sendChatMessage(
       text: text.trim(),
     };
     const response = await apiClient.post(`/${bookingId}/chat`, payload);
+    return response.data;
+  } catch (error) {
+    throw mapError(error);
+  }
+}
+
+/**
+ * Fetch the conversation inbox for the authenticated user.
+ *
+ * Backend endpoint: ``GET /api/v1/chat/inbox?role=<role>&status=<status>``
+ *   - role:    "customer" for the customer app, "provider" for the provider app
+ *   - status:  "active" (default — the inbox tab) or "archived"
+ *
+ * The backend is responsible for:
+ *   - Resolving the user from the Firebase bearer token (no uid needed in body)
+ *   - Filtering conversations by the matching ``customer_id`` or
+ *     ``provider_id`` field
+ *   - Sorting by ``updated_at`` descending (recent first)
+ */
+export async function getChatInbox(
+  role: ConversationRole,
+  status: ConversationStatus = 'active',
+) {
+  try {
+    const response = await apiClient.get<ConversationListResponse>('/chat/inbox', {
+      params: { role, status },
+    });
     return response.data;
   } catch (error) {
     throw mapError(error);

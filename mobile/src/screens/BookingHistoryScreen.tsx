@@ -1,4 +1,4 @@
-/**
+﻿/**
  * BookingHistoryScreen — KaamEasy AI past-bookings list with pull-to-refresh,
  * status badges (now driven by the shared `<StatusBadge>`), and a bottom
  * detail sheet.
@@ -92,11 +92,58 @@ const TRACKING_ACTIVE_STATUSES = new Set([
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * Best-effort coercion of any timestamp shape into a number of
+ * milliseconds since epoch. Handles Firestore Timestamp objects
+ * (.toMillis() / .seconds), ISO 8601 strings, numeric POSIX seconds /
+ * milliseconds, and JS Date instances. Returns NEGATIVE_INFINITY for
+ * unparseable values so they sort to the end of the list instead of
+ * crashing the renderer.
+ */
+function bookingTimestampMs(value: any): number {
+  if (value == null) return Number.NEGATIVE_INFINITY;
+  if (typeof value?.toMillis === 'function') {
+    try { return value.toMillis(); } catch { /* fall through */ }
+  }
+  if (typeof value?.seconds === 'number') {
+    const ns = typeof value.nanoseconds === 'number' ? value.nanoseconds : 0;
+    return value.seconds * 1000 + Math.floor(ns / 1_000_000);
+  }
+  if (value instanceof Date) {
+    const ms = value.getTime();
+    return Number.isFinite(ms) ? ms : Number.NEGATIVE_INFINITY;
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const cleaned = value.trim().endsWith('Z')
+      ? value.trim().replace(/Z$/, '+00:00')
+      : value.trim();
+    const ms = new Date(cleaned).getTime();
+    return Number.isFinite(ms) ? ms : Number.NEGATIVE_INFINITY;
+  }
+  if (typeof value === 'number') {
+    return value < 1e12 ? value * 1000 : value;
+  }
+  return Number.NEGATIVE_INFINITY;
+}
+
+function sortBookingsRecentFirst(list: Booking[]): Booking[] {
+  return [...list].sort((a, b) => {
+    const tA = bookingTimestampMs(a.created_at)
+             || bookingTimestampMs(a.scheduled_at);
+    const tB = bookingTimestampMs(b.created_at)
+             || bookingTimestampMs(b.scheduled_at);
+    if (tA !== tB) return tB - tA;
+    return String(b.id || b.booking_id || '').localeCompare(
+      String(a.id || a.booking_id || ''),
+    );
+  });
+}
+
 function formatDate(timestamp: any): string {
-  if (!timestamp) return 'Unknown date';
+  const ms = bookingTimestampMs(timestamp);
+  if (!Number.isFinite(ms) || ms === Number.NEGATIVE_INFINITY) return 'Unknown date';
   try {
-    const date = timestamp?.toDate ? timestamp.toDate() : new Date(timestamp);
-    return date.toLocaleDateString('en-PK', {
+    return new Date(ms).toLocaleDateString('en-PK', {
       day: 'numeric',
       month: 'short',
       year: 'numeric',
@@ -416,12 +463,15 @@ export default function BookingHistoryScreen() {
           id: d.id,
           ...(d.data() as Omit<Booking, 'id'>),
         }));
-        results.sort((a, b) => {
-          const timeA = a.created_at?.seconds ?? 0;
-          const timeB = b.created_at?.seconds ?? 0;
-          return timeB - timeA;
-        });
       }
+      // Always sort client-side. Firestore's `orderBy(created_at desc)`
+      // only works correctly when every doc has a comparable timestamp
+      // (Firestore Timestamp) AND the composite index is deployed.
+      // Mixing ISO strings and Timestamps — or running the query
+      // before the index is built — would otherwise leave the order
+      // undefined. Sorting here handles every shape (Timestamp, ISO
+      // string, numeric, Date) and falls back to scheduled_at.
+      results = sortBookingsRecentFirst(results);
       setBookings(results);
     } catch (err: any) {
       if (err?.code === 'failed-precondition') {
