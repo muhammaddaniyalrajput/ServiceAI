@@ -14,8 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.serviceflowai.mobile",
-      "googleServicesFile": "./GoogleService-Info.plist"
+      "bundleIdentifier": "com.serviceflowai.mobile"
     },
     "android": {
       "adaptiveIcon": {
@@ -23,7 +22,6 @@
         "backgroundColor": "#0f172a"
       },
       "package": "com.serviceflowai.mobile",
-      "googleServicesFile": "./google-services.json",
       "edgeToEdgeEnabled": true,
       "softwareKeyboardLayoutMode": "pan",
       "config": {
