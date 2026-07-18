@@ -161,3 +161,7 @@ from app.api.v1 import analyze as _legacy_analyze      # noqa: E402
 from app.api.v1 import bookings as _legacy_bookings    # noqa: E402
 from app.api.v1 import provider as _legacy_provider    # noqa: E402
 from app.api.v1 import providers as _legacy_providers  # noqa: E402
+
+# ── Debug router (temporary, for diagnosing the location auto-populate bug) ──
+from app.api.v1.debug.router import router as debug_router
+app.include_router(debug_router, prefix=API_V1, tags=["Debug (temporary)"])

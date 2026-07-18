@@ -168,13 +168,33 @@ def orchestrate_analyze(user_id: str, text: str, coordinates: dict = None) -> An
     user_coords = coordinates
     if user_id and user_id not in ("anonymous", "dev_user"):
         profile = db.get_user_profile(user_id)
+        # ── DEBUG: temporary trace to diagnose location auto-populate ──
+        import logging as _logging
+        _dbg = _logging.getLogger("kaameasy")
+        if profile is None:
+            _dbg.warning(
+                "[DEBUG] get_user_profile(%s) returned None — Firebase "
+                "either not initialised, or no profile document exists for this uid.",
+                user_id,
+            )
+        else:
+            _dbg.warning(
+                "[DEBUG] get_user_profile(%s) keys=%s "
+                "address=%r city=%r province=%r coords=%r",
+                user_id,
+                list(profile.keys()),
+                profile.get("address"),
+                profile.get("city"),
+                profile.get("province"),
+                profile.get("coordinates"),
+            )
         if profile:
             # Check if intent location was not explicitly defined in the request text
             if intent.location.lower() in ("not specified", "unknown", ""):
                 saved_loc = profile.get("address") or f"{profile.get('city')}, {profile.get('province')}"
                 if saved_loc:
                     intent.location = saved_loc
-                    
+
                     # Log the auto-population logic in the agent trace logs
                     from app.core.logger import log_agent
                     logs.append(log_agent(
